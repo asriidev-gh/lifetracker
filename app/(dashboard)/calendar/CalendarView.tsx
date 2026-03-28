@@ -147,11 +147,16 @@ export function CalendarView() {
                     key={a._id}
                     className="flex justify-between rounded-lg border p-3 text-sm"
                   >
-                    <div>
+                    <div className="space-y-1">
                       <p className="font-medium">{a.title}</p>
                       <p className="text-muted-foreground">
                         {a.category} · {a.startTime} – {a.endTime} ({a.duration}h)
                       </p>
+                      {a.notes && a.notes.trim().length > 0 && (
+                        <p className="text-muted-foreground text-xs">
+                          {a.notes}
+                        </p>
+                      )}
                     </div>
                   </li>
                 ))}
