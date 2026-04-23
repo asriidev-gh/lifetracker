@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +18,11 @@ import { useActivityStore } from "@/store/activityStore";
 
 const defaultDate = new Date().toISOString().slice(0, 10);
 
+const dateParamPattern = /^\d{4}-\d{2}-\d{2}$/;
+
 export function AddActivityForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const addActivity = useActivityStore((s) => s.addActivity);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
@@ -31,6 +34,15 @@ export function AddActivityForm() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const dateFromUrl = searchParams.get("date");
+  const sourceFromUrl = searchParams.get("from");
+  const cancelPath = sourceFromUrl === "calendar" ? "/calendar" : "/activities";
+  useEffect(() => {
+    if (dateFromUrl && dateParamPattern.test(dateFromUrl)) {
+      setDate(dateFromUrl);
+    }
+  }, [dateFromUrl]);
 
   function computeDuration() {
     const [sh, sm] = startTime.split(":").map(Number);
@@ -187,7 +199,7 @@ export function AddActivityForm() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push("/activities")}
+              onClick={() => router.push(cancelPath)}
             >
               Cancel
             </Button>

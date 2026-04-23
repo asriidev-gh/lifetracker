@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AddActivityForm } from "./AddActivityForm";
 
 export default function AddActivityPage() {
@@ -9,7 +10,9 @@ export default function AddActivityPage() {
           Log a new activity to track your time
         </p>
       </div>
-      <AddActivityForm />
+      <Suspense fallback={<div className="h-96 animate-pulse rounded-lg border bg-muted/40" />}>
+        <AddActivityForm />
+      </Suspense>
     </div>
   );
 }

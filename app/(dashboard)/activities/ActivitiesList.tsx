@@ -67,6 +67,7 @@ export function ActivitiesList() {
               <TableHead>Category</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Duration</TableHead>
+              <TableHead>Notes</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -80,6 +81,9 @@ export function ActivitiesList() {
                   {a.startTime} – {a.endTime}
                 </TableCell>
                 <TableCell>{a.duration}h</TableCell>
+                <TableCell className="max-w-xs truncate text-muted-foreground">
+                  {a.notes && a.notes.trim().length > 0 ? a.notes : "—"}
+                </TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
