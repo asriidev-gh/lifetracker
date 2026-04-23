@@ -20,6 +20,7 @@ export const CATEGORIES = [
   "Work",
   "Social",
   "Church",
+  "Spiritual",
   "Finance",
   "Family",
   "Personal",

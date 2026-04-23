@@ -25,6 +25,7 @@ const CATEGORY_COLOR_STYLES: Record<string, string> = {
   Work: "bg-blue-500/20 text-blue-800 dark:text-blue-200",
   Social: "bg-pink-500/20 text-pink-800 dark:text-pink-200",
   Church: "bg-violet-500/20 text-violet-800 dark:text-violet-200",
+  Spiritual: "bg-purple-500/20 text-purple-800 dark:text-purple-200",
   Finance: "bg-amber-500/20 text-amber-800 dark:text-amber-200",
   Family: "bg-rose-500/20 text-rose-800 dark:text-rose-200",
   Personal: "bg-cyan-500/20 text-cyan-800 dark:text-cyan-200",
