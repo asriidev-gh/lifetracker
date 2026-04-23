@@ -75,6 +75,17 @@ const streamStyle: Record<Reading["stream"], string> = {
 const HISTORY_PAGE_SIZE = 5;
 const READ_MARKERS_STORAGE_PREFIX = "lifetrack-bible-read-markers";
 
+function getReadingKey(item: Reading) {
+  return `${item.stream}::${item.reference}`;
+}
+
+function getReadMarkersStorageKey(nextPlan: PlanResponse) {
+  const readingFingerprint = nextPlan.readings
+    .map((item) => getReadingKey(item))
+    .join("|");
+  return `${READ_MARKERS_STORAGE_PREFIX}:${nextPlan.today}:${nextPlan.planType}:${readingFingerprint}`;
+}
+
 export function BiblePlanner() {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,17 +124,6 @@ export function BiblePlanner() {
 
   function getVerseKey(reference: string, verse?: number) {
     return `${reference}::${verse ?? 0}`;
-  }
-
-  function getReadingKey(item: Reading) {
-    return `${item.stream}::${item.reference}`;
-  }
-
-  function getReadMarkersStorageKey(nextPlan: PlanResponse) {
-    const readingFingerprint = nextPlan.readings
-      .map((item) => getReadingKey(item))
-      .join("|");
-    return `${READ_MARKERS_STORAGE_PREFIX}:${nextPlan.today}:${nextPlan.planType}:${readingFingerprint}`;
   }
 
   function showSuccess(title: string) {
@@ -233,7 +233,7 @@ export function BiblePlanner() {
     } catch {
       setReadItemKeys([]);
     }
-  }, [plan?.today, plan?.planType, plan?.readings]);
+  }, [plan]);
 
   useEffect(() => {
     if (!plan) return;

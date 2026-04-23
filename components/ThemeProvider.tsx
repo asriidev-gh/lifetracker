@@ -42,7 +42,15 @@ export function ThemeProvider({
     const applyTheme = () => {
       root.classList.remove("light", "dark");
       const resolved: "light" | "dark" =
-        theme === "system" && enableSystem ? (media.matches ? "dark" : "light") : theme;
+        theme === "dark"
+          ? "dark"
+          : theme === "light"
+            ? "light"
+            : enableSystem
+              ? media.matches
+                ? "dark"
+                : "light"
+              : "light";
       root.classList.add(resolved);
     };
 
