@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 
 type Reading = { stream: "OT" | "NT" | "Wisdom"; reference: string };
+type ReadingLike = { stream: "OT" | "NT" | "Wisdom" | "History"; reference: string };
 type VerseLine = { verse: number; text: string };
 type HistoryEntry = {
   date: string;
@@ -76,7 +77,7 @@ const streamStyle: Record<Reading["stream"] | "History", string> = {
 const HISTORY_PAGE_SIZE = 5;
 const READ_MARKERS_STORAGE_PREFIX = "lifetrack-bible-read-markers";
 
-function getReadingKey(item: Reading) {
+function getReadingKey(item: ReadingLike) {
   return `${item.stream}::${item.reference}`;
 }
 
@@ -804,7 +805,7 @@ export function BiblePlanner() {
     plan.readings.length > 0 &&
     plan.readings.every((item) => readItemKeys.includes(getReadingKey(item)));
   const isHistoryReviewMode = reviewHistoryDate !== null;
-  const visibleReadings: Array<Reading | { stream: "History"; reference: string }> =
+  const visibleReadings: ReadingLike[] =
     isHistoryReviewMode
       ? reviewHistoryReadings.map((reference) => ({ stream: "History", reference }))
       : plan.readings;
