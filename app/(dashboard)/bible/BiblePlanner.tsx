@@ -67,10 +67,11 @@ type PlanResponse = {
   summaryHistory: SummaryHistoryItem[];
 };
 
-const streamStyle: Record<Reading["stream"], string> = {
+const streamStyle: Record<Reading["stream"] | "History", string> = {
   OT: "bg-amber-500/20 text-amber-800 dark:text-amber-200",
   NT: "bg-blue-500/20 text-blue-800 dark:text-blue-200",
   Wisdom: "bg-green-500/20 text-green-800 dark:text-green-200",
+  History: "bg-slate-500/20 text-slate-800 dark:text-slate-200",
 };
 const HISTORY_PAGE_SIZE = 5;
 const READ_MARKERS_STORAGE_PREFIX = "lifetrack-bible-read-markers";
@@ -121,9 +122,19 @@ export function BiblePlanner() {
   const [summaryChapterFilter, setSummaryChapterFilter] = useState("all");
   const [summaryDayFilter, setSummaryDayFilter] = useState("all");
   const [readItemKeys, setReadItemKeys] = useState<string[]>([]);
+  const [reviewHistoryDate, setReviewHistoryDate] = useState<string | null>(null);
+  const [reviewHistoryReadings, setReviewHistoryReadings] = useState<string[]>([]);
 
   function getVerseKey(reference: string, verse?: number) {
     return `${reference}::${verse ?? 0}`;
+  }
+
+  function openHistoryInTodayView(entry: HistoryEntry) {
+    const uniqueReadings = Array.from(new Set(entry.readings));
+    setReviewHistoryDate(entry.date);
+    setReviewHistoryReadings(uniqueReadings);
+    setReadItemKeys(uniqueReadings.map((reference) => `History::${reference}`));
+    setActiveView("today");
   }
 
   function showSuccess(title: string) {
@@ -240,6 +251,15 @@ export function BiblePlanner() {
     const storageKey = getReadMarkersStorageKey(plan);
     window.localStorage.setItem(storageKey, JSON.stringify(readItemKeys));
   }, [plan, readItemKeys]);
+
+  useEffect(() => {
+    if (!reviewHistoryDate) return;
+    const stillExists = plan?.history.some((entry) => entry.date === reviewHistoryDate);
+    if (!stillExists) {
+      setReviewHistoryDate(null);
+      setReviewHistoryReadings([]);
+    }
+  }, [plan, reviewHistoryDate]);
 
   async function toggleCatchUp() {
     if (!plan) return;
@@ -783,6 +803,11 @@ export function BiblePlanner() {
   const allReadItemsChecked =
     plan.readings.length > 0 &&
     plan.readings.every((item) => readItemKeys.includes(getReadingKey(item)));
+  const isHistoryReviewMode = reviewHistoryDate !== null;
+  const visibleReadings: Array<Reading | { stream: "History"; reference: string }> =
+    isHistoryReviewMode
+      ? reviewHistoryReadings.map((reference) => ({ stream: "History", reference }))
+      : plan.readings;
 
   return (
     <div className="space-y-6">
@@ -878,17 +903,37 @@ export function BiblePlanner() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Today&apos;s Readings</CardTitle>
+            <CardTitle>
+              {isHistoryReviewMode
+                ? `Reading Review (${reviewHistoryDate})`
+                : "Today's Readings"}
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Short + balanced reading list. Catch-up keeps you on pace for your target date.
+              {isHistoryReviewMode
+                ? "Review chapters from a previous day and reopen them in the reader."
+                : "Short + balanced reading list. Catch-up keeps you on pace for your target date."}
             </p>
           </div>
-          <Button type="button" variant="outline" onClick={toggleCatchUp}>
-            Catch-up mode: {plan.catchUpMode ? "On" : "Off"}
-          </Button>
+          {isHistoryReviewMode ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setReviewHistoryDate(null);
+                setReviewHistoryReadings([]);
+                setReadItemKeys([]);
+              }}
+            >
+              Back to today
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={toggleCatchUp}>
+              Catch-up mode: {plan.catchUpMode ? "On" : "Off"}
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {plan.readings.map((item) => (
+          {visibleReadings.map((item) => (
             <div key={`${item.stream}-${item.reference}`} className="flex items-center justify-between rounded-lg border p-3">
               <div className="flex items-center gap-2">
                 <span className={`rounded px-2 py-0.5 text-xs font-medium ${streamStyle[item.stream]}`}>
@@ -942,7 +987,9 @@ export function BiblePlanner() {
 
           <div className="flex items-center justify-between pt-2">
             <p className="text-sm text-muted-foreground">
-              Gentle reminders are stored in your plan ({plan.reminderEnabled ? "enabled" : "disabled"} at {plan.reminderTime}).
+              {isHistoryReviewMode
+                ? "You are reviewing a previous reading day."
+                : `Gentle reminders are stored in your plan (${plan.reminderEnabled ? "enabled" : "disabled"} at ${plan.reminderTime}).`}
             </p>
             <div className="flex items-center gap-2">
               {speakingReference && (
@@ -950,25 +997,27 @@ export function BiblePlanner() {
                   Stop audio
                 </Button>
               )}
-              <Button
-                type="button"
-                onClick={markComplete}
-                disabled={
-                  saving ||
-                  (plan.completedToday && !plan.catchUpMode) ||
-                  !allReadItemsChecked
-                }
-              >
-                {saving
-                  ? "Saving..."
-                  : plan.completedToday
-                    ? plan.catchUpMode
-                      ? "Completed today (read next)"
-                      : "Completed today"
-                    : allReadItemsChecked
-                      ? "Mark today complete"
-                      : "Mark all items as read first"}
-              </Button>
+              {!isHistoryReviewMode && (
+                <Button
+                  type="button"
+                  onClick={markComplete}
+                  disabled={
+                    saving ||
+                    (plan.completedToday && !plan.catchUpMode) ||
+                    !allReadItemsChecked
+                  }
+                >
+                  {saving
+                    ? "Saving..."
+                    : plan.completedToday
+                      ? plan.catchUpMode
+                        ? "Completed today (read next)"
+                        : "Completed today"
+                      : allReadItemsChecked
+                        ? "Mark today complete"
+                        : "Mark all items as read first"}
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -993,9 +1042,19 @@ export function BiblePlanner() {
               <div key={entry.date} className="rounded-lg border p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="font-medium">{entry.date}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {entry.totalReadings} {entry.totalReadings === 1 ? "reading" : "readings"}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      {entry.totalReadings} {entry.totalReadings === 1 ? "reading" : "readings"}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openHistoryInTodayView(entry)}
+                    >
+                      Open in Today
+                    </Button>
+                  </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {entry.readings.join(", ")}
