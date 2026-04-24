@@ -31,6 +31,13 @@ export interface IChapterSummaryEntry {
   createdAt: string;
 }
 
+export interface IVocabularyEntry {
+  _id?: string;
+  word: string;
+  meaning: string;
+  createdAt: string;
+}
+
 export interface IBibleJourney {
   _id: string;
   userId: Types.ObjectId;
@@ -59,6 +66,7 @@ export interface IBibleJourney {
   savedScriptures: ISavedScriptureEntry[];
   aiConversations: IAIConversationEntry[];
   chapterSummaries: IChapterSummaryEntry[];
+  vocabulary: IVocabularyEntry[];
 }
 
 const BibleJourneySchema = new Schema<IBibleJourney>(
@@ -114,6 +122,13 @@ const BibleJourneySchema = new Schema<IBibleJourney>(
       {
         reference: { type: String, required: true },
         summary: { type: String, required: true },
+        createdAt: { type: String, required: true },
+      },
+    ],
+    vocabulary: [
+      {
+        word: { type: String, required: true },
+        meaning: { type: String, required: true },
         createdAt: { type: String, required: true },
       },
     ],

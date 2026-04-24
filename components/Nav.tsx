@@ -22,7 +22,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/activities", label: "Activities", icon: ListTodo },
   { href: "/calendar", label: "Calendar", icon: Calendar },
-  { href: "/bible", label: "Bible Plan", icon: BookOpen },
+  { href: "/bible", label: "Bible Journey", icon: BookOpen },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/heatmap", label: "Heatmap", icon: Flame },

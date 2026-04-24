@@ -5,6 +5,7 @@ import { Check, Settings } from "lucide-react";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,12 @@ type SummaryHistoryItem = {
   summary: string;
   createdAt: string;
 };
+type VocabularyItem = {
+  _id?: string;
+  word: string;
+  meaning: string;
+  createdAt: string;
+};
 type PlanResponse = {
   today: string;
   completedToday: boolean;
@@ -66,6 +73,7 @@ type PlanResponse = {
   savedScriptures: SavedScripture[];
   qaHistory: QAHistoryItem[];
   summaryHistory: SummaryHistoryItem[];
+  vocabulary: VocabularyItem[];
 };
 
 const streamStyle: Record<Reading["stream"] | "History", string> = {
@@ -132,7 +140,9 @@ export function BiblePlanner() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [savingScripture, setSavingScripture] = useState(false);
   const [highlightedVerseKeys, setHighlightedVerseKeys] = useState<string[]>([]);
-  const [activeView, setActiveView] = useState<"today" | "history" | "saved" | "summary" | "qa">("today");
+  const [activeView, setActiveView] = useState<
+    "today" | "history" | "saved" | "summary" | "qa" | "vocabulary"
+  >("today");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [qaPage, setQaPage] = useState(1);
   const [summaryPage, setSummaryPage] = useState(1);
@@ -146,6 +156,13 @@ export function BiblePlanner() {
   const [savedScopedChapters, setSavedScopedChapters] = useState<string[] | null>(null);
   const [qaScopedChapters, setQaScopedChapters] = useState<string[] | null>(null);
   const [summaryScopedChapters, setSummaryScopedChapters] = useState<string[] | null>(null);
+  const [vocabularyOpen, setVocabularyOpen] = useState(false);
+  const [vocabularyEditId, setVocabularyEditId] = useState<string | null>(null);
+  const [vocabularyWord, setVocabularyWord] = useState("");
+  const [vocabularyMeaning, setVocabularyMeaning] = useState("");
+  const [vocabularySearch, setVocabularySearch] = useState("");
+  const [vocabularySaving, setVocabularySaving] = useState(false);
+  const [vocabularyAiLoading, setVocabularyAiLoading] = useState(false);
   const [readItemKeys, setReadItemKeys] = useState<string[]>([]);
   const [reviewHistoryDate, setReviewHistoryDate] = useState<string | null>(null);
   const [reviewHistoryReadings, setReviewHistoryReadings] = useState<string[]>([]);
@@ -616,6 +633,66 @@ export function BiblePlanner() {
     }
   }
 
+  async function saveVocabulary() {
+    const word = vocabularyWord.trim();
+    const meaning = vocabularyMeaning.trim();
+    if (!word || !meaning) {
+      await showError("Word and meaning are required");
+      return;
+    }
+    setVocabularySaving(true);
+    try {
+      const isEdit = vocabularyEditId != null;
+      const res = await fetch("/api/bible/vocabulary", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isEdit ? { id: vocabularyEditId, word, meaning } : { word, meaning }
+        ),
+      });
+      if (!res.ok) {
+        await showError(isEdit ? "Failed to update vocabulary" : "Failed to save vocabulary");
+        return;
+      }
+      await loadPlan(true);
+      setVocabularyWord("");
+      setVocabularyMeaning("");
+      setVocabularyEditId(null);
+      setVocabularyOpen(false);
+      await showSuccess(isEdit ? "Vocabulary updated" : "Vocabulary saved");
+    } finally {
+      setVocabularySaving(false);
+    }
+  }
+
+  async function askAiVocabularyMeaning() {
+    const word = vocabularyWord.trim();
+    if (!word) {
+      await showError("Enter a word first");
+      return;
+    }
+    setVocabularyAiLoading(true);
+    try {
+      const res = await fetch("/api/bible/vocabulary-meaning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        await showError(data?.error ?? "Failed to generate meaning");
+        return;
+      }
+      if (typeof data?.meaning === "string" && data.meaning.trim().length > 0) {
+        setVocabularyMeaning(data.meaning.trim());
+      } else {
+        await showError("No meaning generated");
+      }
+    } finally {
+      setVocabularyAiLoading(false);
+    }
+  }
+
   async function removeSavedScriptureByKey(type: "highlight", reference: string, verse?: number) {
     const qs = new URLSearchParams({
       type,
@@ -720,11 +797,11 @@ export function BiblePlanner() {
   }
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading Bible plan...</p>;
+    return <p className="text-muted-foreground">Loading Bible Journey...</p>;
   }
 
   if (!plan) {
-    return <p className="text-destructive">Unable to load your Bible reading plan.</p>;
+    return <p className="text-destructive">Unable to load your Bible Journey.</p>;
   }
 
   const highlightedSavedScriptures = plan.savedScriptures.filter(
@@ -936,6 +1013,9 @@ export function BiblePlanner() {
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+  const filteredVocabulary = plan.vocabulary.filter((item) =>
+    item.word.toLowerCase().includes(vocabularySearch.trim().toLowerCase())
+  );
   const allReadItemsChecked =
     plan.readings.length > 0 &&
     plan.readings.every((item) => readItemKeys.includes(getReadingKey(item)));
@@ -952,7 +1032,7 @@ export function BiblePlanner() {
           <div>
             <CardTitle>1-Year Bible Journey</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Free source: bible-api.com (no API key), flexible plan modes, and streak support.
+              Free source: bible-api.com (no API key), flexible reading modes, and streak support.
             </p>
           </div>
           <Button
@@ -960,7 +1040,7 @@ export function BiblePlanner() {
             size="icon"
             variant="outline"
             onClick={() => setSettingsOpen(true)}
-            aria-label="Open Bible plan settings"
+            aria-label="Open Bible Journey settings"
           >
             <Settings className="h-4 w-4" />
           </Button>
@@ -1030,6 +1110,14 @@ export function BiblePlanner() {
               onClick={() => setActiveView("summary")}
             >
               Chapter Summaries
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={activeView === "vocabulary" ? "default" : "outline"}
+              onClick={() => setActiveView("vocabulary")}
+            >
+              Vocabulary
             </Button>
           </div>
         </CardContent>
@@ -1125,7 +1213,7 @@ export function BiblePlanner() {
             <p className="text-sm text-muted-foreground">
               {isHistoryReviewMode
                 ? "You are reviewing a previous reading day."
-                : `Gentle reminders are stored in your plan (${plan.reminderEnabled ? "enabled" : "disabled"} at ${plan.reminderTime}).`}
+                : `Gentle reminders are stored in your journey (${plan.reminderEnabled ? "enabled" : "disabled"} at ${plan.reminderTime}).`}
             </p>
             <div className="flex items-center gap-2">
               {speakingReference && (
@@ -1580,6 +1668,78 @@ export function BiblePlanner() {
       </Card>
       )}
 
+      {activeView === "vocabulary" && (
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Vocabulary</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Save important words from your study and search them quickly.
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => {
+              setVocabularyEditId(null);
+              setVocabularyWord("");
+              setVocabularyMeaning("");
+              setVocabularyOpen(true);
+            }}
+          >
+            Add Vocabulary
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Input
+            value={vocabularySearch}
+            onChange={(e) => setVocabularySearch(e.target.value)}
+            placeholder="Search word..."
+          />
+          {filteredVocabulary.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {plan.vocabulary.length === 0
+                ? "No vocabulary saved yet."
+                : "No word matches your search."}
+            </p>
+          ) : (
+            filteredVocabulary.map((item) => (
+              <div
+                key={item._id ?? `${item.word}-${item.createdAt}`}
+                className="rounded-lg border p-3"
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="font-medium">{item.word}</p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item._id ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setVocabularyEditId(String(item._id));
+                          setVocabularyWord(item.word);
+                          setVocabularyMeaning(item.meaning);
+                          setVocabularyOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    ) : null}
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground whitespace-pre-line">
+                  {item.meaning}
+                </p>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+      )}
+
       <Dialog open={readerOpen} onOpenChange={setReaderOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
@@ -1758,10 +1918,81 @@ export function BiblePlanner() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={vocabularyOpen}
+        onOpenChange={(open) => {
+          setVocabularyOpen(open);
+          if (!open) {
+            setVocabularyEditId(null);
+            setVocabularyWord("");
+            setVocabularyMeaning("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {vocabularyEditId ? "Edit Vocabulary" : "Add Vocabulary"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Word</p>
+              <div className="flex gap-2">
+                <Input
+                  value={vocabularyWord}
+                  onChange={(e) => setVocabularyWord(e.target.value)}
+                  placeholder="Enter word..."
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={askAiVocabularyMeaning}
+                  disabled={vocabularyAiLoading || !vocabularyWord.trim()}
+                >
+                  {vocabularyAiLoading ? "Asking..." : "Ask AI"}
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Meaning</p>
+              <textarea
+                value={vocabularyMeaning}
+                onChange={(e) => setVocabularyMeaning(e.target.value)}
+                placeholder="Enter meaning..."
+                className="min-h-[120px] w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setVocabularyOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={saveVocabulary}
+                disabled={vocabularySaving}
+              >
+                {vocabularySaving
+                  ? vocabularyEditId
+                    ? "Updating..."
+                    : "Saving..."
+                  : vocabularyEditId
+                    ? "Update"
+                    : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Bible Plan Settings</DialogTitle>
+            <DialogTitle>Bible Journey Settings</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">

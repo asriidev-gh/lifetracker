@@ -42,12 +42,12 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        temperature: 0.2,
+        temperature: 0.3,
         messages: [
           {
             role: "system",
             content:
-              "You are a Bible study assistant. Answer only from the provided passage context and keep the response concise, practical, and gentle.",
+              "You are a Bible study assistant. Answer from the provided passage context with a warm, practical, beginner-friendly tone. Use this structure: 1) Direct answer (2-4 sentences), 2) Passage context (2-4 bullet points), 3) Practical takeaway (2-4 short lines). If the question cannot be answered clearly from the text, say so honestly and provide the closest faithful context. Target around 140-260 words unless the user asks for a short answer.",
           },
           {
             role: "user",

@@ -68,7 +68,7 @@ export async function POST() {
       userId,
       title: "Bible Reading Completed",
       category: "Spiritual",
-      tags: ["Bible", "Reading Plan"],
+      tags: ["Bible", "Bible Journey"],
       date: new Date(`${today}T00:00:00.000Z`),
       startTime: "06:00",
       endTime: "06:30",

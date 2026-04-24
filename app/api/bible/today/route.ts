@@ -47,6 +47,9 @@ export async function GET() {
     const summaryHistory = [...(journey.chapterSummaries ?? [])]
       .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
       .slice(0, 50);
+    const vocabulary = [...(journey.vocabulary ?? [])]
+      .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+      .slice(0, 200);
 
     return NextResponse.json({
       today,
@@ -71,6 +74,7 @@ export async function GET() {
       savedScriptures,
       qaHistory,
       summaryHistory,
+      vocabulary,
     });
   } catch (error) {
     console.error("GET bible/today error:", error);
