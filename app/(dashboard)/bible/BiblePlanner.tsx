@@ -88,6 +88,26 @@ function getReadMarkersStorageKey(nextPlan: PlanResponse) {
   return `${READ_MARKERS_STORAGE_PREFIX}:${nextPlan.today}:${nextPlan.planType}:${readingFingerprint}`;
 }
 
+function getUtcDateKey(value: string | Date) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeReference(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getChapterReference(value: string) {
+  return normalizeReference(value).replace(/:\d.*$/, "").trim();
+}
+
+function getLatestQaDateKey(items: QAHistoryItem[]) {
+  if (items.length === 0) return null;
+  return items
+    .map((item) => getUtcDateKey(item.createdAt))
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+}
+
 export function BiblePlanner() {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,6 +142,10 @@ export function BiblePlanner() {
   const [savedChapterFilter, setSavedChapterFilter] = useState("all");
   const [summaryChapterFilter, setSummaryChapterFilter] = useState("all");
   const [summaryDayFilter, setSummaryDayFilter] = useState("all");
+  const [summarySortOrder, setSummarySortOrder] = useState<"desc" | "asc">("desc");
+  const [savedScopedChapters, setSavedScopedChapters] = useState<string[] | null>(null);
+  const [qaScopedChapters, setQaScopedChapters] = useState<string[] | null>(null);
+  const [summaryScopedChapters, setSummaryScopedChapters] = useState<string[] | null>(null);
   const [readItemKeys, setReadItemKeys] = useState<string[]>([]);
   const [reviewHistoryDate, setReviewHistoryDate] = useState<string | null>(null);
   const [reviewHistoryReadings, setReviewHistoryReadings] = useState<string[]>([]);
@@ -136,6 +160,10 @@ export function BiblePlanner() {
     setReviewHistoryReadings(uniqueReadings);
     setReadItemKeys(uniqueReadings.map((reference) => `History::${reference}`));
     setActiveView("today");
+  }
+
+  function getHistoryChapterScope(readings: string[]) {
+    return Array.from(new Set(readings.map((ref) => getChapterReference(ref))));
   }
 
   function showSuccess(title: string) {
@@ -160,14 +188,29 @@ export function BiblePlanner() {
     });
   }
 
-  async function loadPlan() {
-    setLoading(true);
+  async function loadPlan(silent = false) {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const res = await fetch("/api/bible/today");
       const data = await res.json();
-      if (res.ok) setPlan(data);
+      if (res.ok) {
+        setPlan(data);
+        if (qaDayFilter === "all") {
+          const latestQaDateKey = getLatestQaDateKey(
+            Array.isArray(data?.qaHistory) ? data.qaHistory : []
+          );
+          if (latestQaDateKey) {
+            setQaDayFilter(latestQaDateKey);
+            setQaPage(1);
+          }
+        }
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -184,26 +227,12 @@ export function BiblePlanner() {
 
   useEffect(() => {
     if (!plan) return;
-    const dayByReference = new Map<string, number>();
-    const sortedHistory = [...plan.history].sort((a, b) => {
-      const ta = new Date(a.date).getTime();
-      const tb = new Date(b.date).getTime();
-      return ta - tb;
-    });
-    sortedHistory.forEach((entry, index) => {
-      const day = index + 1;
-      entry.readings.forEach((reference) => {
-        if (!dayByReference.has(reference)) {
-          dayByReference.set(reference, day);
-        }
-      });
-    });
     const filteredQaCount = plan.qaHistory.filter((item) => {
       const chapterMatch =
         qaChapterFilter === "all" || item.reference === qaChapterFilter;
       const dayMatch =
         qaDayFilter === "all" ||
-        dayByReference.get(item.reference) === Number(qaDayFilter);
+        getUtcDateKey(item.createdAt) === qaDayFilter;
       return chapterMatch && dayMatch;
     }).length;
     const filteredSummaryCount =
@@ -213,7 +242,7 @@ export function BiblePlanner() {
           item.reference === summaryChapterFilter;
         const dayMatch =
           summaryDayFilter === "all" ||
-          dayByReference.get(item.reference) === Number(summaryDayFilter);
+          getUtcDateKey(item.createdAt) === summaryDayFilter;
         return chapterMatch && dayMatch;
       }).length;
     const nextQaTotalPages = Math.max(1, Math.ceil(filteredQaCount / HISTORY_PAGE_SIZE));
@@ -221,6 +250,47 @@ export function BiblePlanner() {
     if (qaPage > nextQaTotalPages) setQaPage(nextQaTotalPages);
     if (summaryPage > nextSummaryTotalPages) setSummaryPage(nextSummaryTotalPages);
   }, [plan, qaPage, summaryPage, qaChapterFilter, qaDayFilter, summaryChapterFilter, summaryDayFilter]);
+
+  useEffect(() => {
+    if (!plan || qaChapterFilter === "all") return;
+    const hasMatch = plan.qaHistory.some(
+      (item) =>
+        item.reference === qaChapterFilter &&
+        (qaDayFilter === "all" || getUtcDateKey(item.createdAt) === qaDayFilter)
+    );
+    if (!hasMatch) {
+      setQaChapterFilter("all");
+    }
+  }, [plan, qaChapterFilter, qaDayFilter]);
+
+  useEffect(() => {
+    if (!plan || summaryChapterFilter === "all") return;
+    const hasMatch = plan.summaryHistory.some(
+      (item) =>
+        item.reference === summaryChapterFilter &&
+        (summaryDayFilter === "all" ||
+          getUtcDateKey(item.createdAt) === summaryDayFilter)
+    );
+    if (!hasMatch) {
+      setSummaryChapterFilter("all");
+    }
+  }, [plan, summaryChapterFilter, summaryDayFilter]);
+
+  useEffect(() => {
+    if (!plan || savedChapterFilter !== "all") return;
+    const latestHighlight = [...(plan.savedScriptures ?? [])]
+      .filter(
+        (item) => item.type === "highlight" && typeof item.reference === "string"
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt ?? "").getTime() -
+          new Date(a.createdAt ?? "").getTime()
+      )[0];
+    if (latestHighlight?.reference) {
+      setSavedChapterFilter(latestHighlight.reference);
+    }
+  }, [plan, savedChapterFilter]);
 
   useEffect(() => {
     if (!plan) return;
@@ -488,7 +558,7 @@ export function BiblePlanner() {
         }),
       });
       if (res.ok) {
-        await loadPlan();
+        await loadPlan(true);
         setQaQuestion("");
         setQaAnswer("");
         setQaError("");
@@ -554,7 +624,7 @@ export function BiblePlanner() {
     if (typeof verse === "number") qs.set("verse", String(verse));
     const res = await fetch(`/api/bible/saved?${qs.toString()}`, { method: "DELETE" });
     if (res.ok) {
-      await loadPlan();
+      await loadPlan(true);
     }
     return res.ok;
   }
@@ -578,7 +648,7 @@ export function BiblePlanner() {
         });
         if (res.ok) {
           setHighlightedVerseKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
-          await loadPlan();
+          await loadPlan(true);
         }
       }
     } finally {
@@ -682,53 +752,72 @@ export function BiblePlanner() {
       .sort((a, b) => a.reference.localeCompare(b.reference));
   })();
   const savedChapterOptions = highlightedByReference.map((group) => group.reference);
+  const savedScopedChapterSet = savedScopedChapters
+    ? new Set(savedScopedChapters.map((ref) => getChapterReference(ref)))
+    : null;
   const filteredHighlightedByReference =
-    savedChapterFilter === "all"
-      ? highlightedByReference
-      : highlightedByReference.filter((group) => group.reference === savedChapterFilter);
-  const dayByReference = (() => {
-    const map = new Map<string, number>();
-    const sortedHistory = [...plan.history].sort((a, b) => {
-      const ta = new Date(a.date).getTime();
-      const tb = new Date(b.date).getTime();
-      return ta - tb;
+    highlightedByReference.filter((group) => {
+      const chapterFilterMatch =
+        savedChapterFilter === "all" || group.reference === savedChapterFilter;
+      const scopeMatch =
+        !savedScopedChapterSet ||
+        savedScopedChapterSet.has(getChapterReference(group.reference));
+      return chapterFilterMatch && scopeMatch;
     });
-    sortedHistory.forEach((entry, index) => {
-      const day = index + 1;
-      entry.readings.forEach((reference) => {
-        if (!map.has(reference)) {
-          map.set(reference, day);
-        }
-      });
+  const qaDayNumberByDate = (() => {
+    const usedDates = new Set<string>();
+    for (const item of plan.qaHistory) {
+      usedDates.add(getUtcDateKey(item.createdAt));
+    }
+    const datesAsc = Array.from(usedDates).sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+    );
+    const map = new Map<string, number>();
+    datesAsc.forEach((dateKey, index) => {
+      map.set(dateKey, index + 1);
     });
     return map;
   })();
   const qaDayOptions = (() => {
-    const sortedHistory = [...plan.history].sort((a, b) => {
-      const ta = new Date(a.date).getTime();
-      const tb = new Date(b.date).getTime();
-      return tb - ta;
-    });
-    return sortedHistory.map((entry, index) => ({
-      value: String(sortedHistory.length - index),
-      label: `Day ${sortedHistory.length - index} (${entry.date})`,
-    }));
+    return Array.from(qaDayNumberByDate.keys())
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+      .map((dateKey) => {
+        const dayNumber = qaDayNumberByDate.get(dateKey) ?? 1;
+        return {
+          value: dateKey,
+          label: `Day ${dayNumber} (${dateKey})`,
+        };
+      });
   })();
   const qaChapterOptions = (() => {
-    // Prefer real reading day from plan history; fallback to Q&A creation order.
+    const qaItemsForSelectedDay =
+      qaDayFilter === "all"
+        ? plan.qaHistory
+        : plan.qaHistory.filter(
+            (item) => getUtcDateKey(item.createdAt) === qaDayFilter
+          );
+    // Keep chapter labels aligned with Q&A day numbering.
     const earliestByReference = new Map<string, number>();
-    for (const item of plan.qaHistory) {
+    const qaDayByReference = new Map<string, number>();
+    for (const item of qaItemsForSelectedDay) {
       const ts = new Date(item.createdAt).getTime();
       const current = earliestByReference.get(item.reference);
       if (current === undefined || ts < current) {
         earliestByReference.set(item.reference, ts);
       }
+      const dayForQaDate = qaDayNumberByDate.get(getUtcDateKey(item.createdAt));
+      if (dayForQaDate !== undefined) {
+        const existing = qaDayByReference.get(item.reference);
+        if (existing === undefined || dayForQaDate < existing) {
+          qaDayByReference.set(item.reference, dayForQaDate);
+        }
+      }
     }
 
-    return Array.from(new Set(plan.qaHistory.map((item) => item.reference)))
+    return Array.from(new Set(qaItemsForSelectedDay.map((item) => item.reference)))
       .sort((a, b) => {
-        const dayA = dayByReference.get(a);
-        const dayB = dayByReference.get(b);
+        const dayA = qaDayByReference.get(a);
+        const dayB = qaDayByReference.get(b);
         if (dayA !== undefined && dayB !== undefined && dayA !== dayB) {
           return dayA - dayB;
         }
@@ -737,7 +826,7 @@ export function BiblePlanner() {
         return (earliestByReference.get(a) ?? 0) - (earliestByReference.get(b) ?? 0);
       })
       .map((reference, index) => {
-        const day = dayByReference.get(reference);
+        const day = qaDayByReference.get(reference);
         return {
           reference,
           label: `${reference} (Day ${day ?? index + 1})`,
@@ -750,8 +839,11 @@ export function BiblePlanner() {
         qaChapterFilter === "all" || item.reference === qaChapterFilter;
       const dayMatch =
         qaDayFilter === "all" ||
-        dayByReference.get(item.reference) === Number(qaDayFilter);
-      return chapterMatch && dayMatch;
+        getUtcDateKey(item.createdAt) === qaDayFilter;
+      const scopeMatch =
+        !qaScopedChapters ||
+        qaScopedChapters.includes(getChapterReference(item.reference));
+      return chapterMatch && dayMatch && scopeMatch;
     });
   const sortedQaHistory = [...filteredQaHistory].sort((a, b) => {
     const at = new Date(a.createdAt).getTime();
@@ -759,19 +851,53 @@ export function BiblePlanner() {
     return qaSortOrder === "asc" ? at - bt : bt - at;
   });
   const qaTotalPages = Math.max(1, Math.ceil(sortedQaHistory.length / HISTORY_PAGE_SIZE));
-  const summaryChapterOptions = Array.from(
-    new Set(plan.summaryHistory.map((item) => item.reference))
-  ).sort();
-  const summaryDayOptions = (() => {
-    const sortedHistory = [...plan.history].sort((a, b) => {
-      const ta = new Date(a.date).getTime();
-      const tb = new Date(b.date).getTime();
-      return tb - ta;
+  const summaryDayNumberByDate = (() => {
+    const usedDates = new Set<string>();
+    for (const item of plan.summaryHistory) {
+      usedDates.add(getUtcDateKey(item.createdAt));
+    }
+    const datesAsc = Array.from(usedDates).sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+    );
+    const map = new Map<string, number>();
+    datesAsc.forEach((dateKey, index) => {
+      map.set(dateKey, index + 1);
     });
-    return sortedHistory.map((entry, index) => ({
-      value: String(sortedHistory.length - index),
-      label: `Day ${sortedHistory.length - index} (${entry.date})`,
-    }));
+    return map;
+  })();
+  const summaryScopedChapterSet = summaryScopedChapters
+    ? new Set(summaryScopedChapters.map((ref) => getChapterReference(ref)))
+    : null;
+  const summaryHistoryForSelectedDay =
+    summaryDayFilter === "all"
+      ? plan.summaryHistory
+      : plan.summaryHistory.filter(
+          (item) => getUtcDateKey(item.createdAt) === summaryDayFilter
+        );
+  const summaryChapterOptions = Array.from(
+    new Set(summaryHistoryForSelectedDay.map((item) => item.reference))
+  )
+    .map((reference) => {
+      const related = summaryHistoryForSelectedDay.filter(
+        (item) => item.reference === reference
+      );
+      const earliest = related
+        .map((item) => getUtcDateKey(item.createdAt))
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+      const day = earliest ? summaryDayNumberByDate.get(earliest) : undefined;
+      return {
+        reference,
+        label: `${reference} (Day ${day ?? 1})`,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const summaryDayOptions = (() => {
+    return Array.from(summaryDayNumberByDate.keys())
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+      .map((dateKey) => ({
+        value: dateKey,
+        label: `Day ${summaryDayNumberByDate.get(dateKey) ?? 1} (${dateKey})`,
+      }));
   })();
   const filteredSummaryHistory =
     plan.summaryHistory.filter((item) => {
@@ -780,23 +906,32 @@ export function BiblePlanner() {
         item.reference === summaryChapterFilter;
       const dayMatch =
         summaryDayFilter === "all" ||
-        dayByReference.get(item.reference) === Number(summaryDayFilter);
-      return chapterMatch && dayMatch;
+        getUtcDateKey(item.createdAt) === summaryDayFilter;
+      const scopeMatch =
+        !summaryScopedChapterSet ||
+        summaryScopedChapterSet.has(getChapterReference(item.reference));
+      return chapterMatch && dayMatch && scopeMatch;
     });
-  const summaryTotalPages = Math.max(1, Math.ceil(filteredSummaryHistory.length / HISTORY_PAGE_SIZE));
+  const sortedSummaryHistory = [...filteredSummaryHistory].sort((a, b) => {
+    const at = new Date(a.createdAt).getTime();
+    const bt = new Date(b.createdAt).getTime();
+    return summarySortOrder === "asc" ? at - bt : bt - at;
+  });
+  const summaryTotalPages = Math.max(1, Math.ceil(sortedSummaryHistory.length / HISTORY_PAGE_SIZE));
   const paginatedQAHistory = sortedQaHistory.slice(
     (qaPage - 1) * HISTORY_PAGE_SIZE,
     qaPage * HISTORY_PAGE_SIZE
   );
-  const paginatedSummaryHistory = filteredSummaryHistory.slice(
+  const paginatedSummaryHistory = sortedSummaryHistory.slice(
     (summaryPage - 1) * HISTORY_PAGE_SIZE,
     summaryPage * HISTORY_PAGE_SIZE
   );
+  const readerChapterReference = getChapterReference(readerReference);
   const savedSummariesForReference = plan.summaryHistory.filter(
-    (item) => item.reference === readerReference
+    (item) => getChapterReference(item.reference) === readerChapterReference
   );
   const relatedQaForReference = plan.qaHistory
-    .filter((item) => item.reference === readerReference)
+    .filter((item) => getChapterReference(item.reference) === readerChapterReference)
     .sort(
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -1055,6 +1190,35 @@ export function BiblePlanner() {
                     >
                       Open in Today
                     </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const historyScope = getHistoryChapterScope(entry.readings);
+                        setSummaryDayFilter("all");
+                        setSummaryChapterFilter("all");
+                        setSummaryScopedChapters(historyScope);
+                        setSummaryPage(1);
+                        setActiveView("summary");
+                      }}
+                    >
+                      Chapter Summaries
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setQaDayFilter(entry.date);
+                        setQaChapterFilter("all");
+                        setQaScopedChapters(getHistoryChapterScope(entry.readings));
+                        setQaPage(1);
+                        setActiveView("qa");
+                      }}
+                    >
+                      AI Q&A
+                    </Button>
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -1081,7 +1245,10 @@ export function BiblePlanner() {
               <p className="text-sm font-medium">Filter by chapter:</p>
               <Select
                 value={savedChapterFilter}
-                onValueChange={setSavedChapterFilter}
+                onValueChange={(value) => {
+                  setSavedChapterFilter(value);
+                  setSavedScopedChapters(null);
+                }}
               >
                 <SelectTrigger className="w-full sm:w-[280px]">
                   <SelectValue placeholder="All chapters" />
@@ -1167,6 +1334,7 @@ export function BiblePlanner() {
                 value={qaDayFilter}
                 onValueChange={(value) => {
                   setQaDayFilter(value);
+                  setQaScopedChapters(null);
                   setQaPage(1);
                 }}
               >
@@ -1187,6 +1355,7 @@ export function BiblePlanner() {
                 value={qaChapterFilter}
                 onValueChange={(value) => {
                   setQaChapterFilter(value);
+                  setQaScopedChapters(null);
                   setQaPage(1);
                 }}
               >
@@ -1301,6 +1470,7 @@ export function BiblePlanner() {
                 value={summaryDayFilter}
                 onValueChange={(value) => {
                   setSummaryDayFilter(value);
+                  setSummaryScopedChapters(null);
                   setSummaryPage(1);
                 }}
               >
@@ -1321,6 +1491,7 @@ export function BiblePlanner() {
                 value={summaryChapterFilter}
                 onValueChange={(value) => {
                   setSummaryChapterFilter(value);
+                  setSummaryScopedChapters(null);
                   setSummaryPage(1);
                 }}
               >
@@ -1329,13 +1500,25 @@ export function BiblePlanner() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All chapters</SelectItem>
-                  {summaryChapterOptions.map((reference) => (
-                    <SelectItem key={reference} value={reference}>
-                      {reference}
+                  {summaryChapterOptions.map((option) => (
+                    <SelectItem key={option.reference} value={option.reference}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-sm font-medium">Sort by created:</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSummarySortOrder((prev) => (prev === "desc" ? "asc" : "desc"));
+                  setSummaryPage(1);
+                }}
+              >
+                {summarySortOrder === "desc" ? "Newest first" : "Oldest first"}
+              </Button>
             </div>
           )}
           {filteredSummaryHistory.length === 0 ? (
@@ -1563,6 +1746,15 @@ export function BiblePlanner() {
               </div>
             </div>
           )}
+          <div className="flex justify-end pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReaderOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
