@@ -140,7 +140,7 @@ function groupUpcomingPreviewByCategory(
     list.push(a);
     byCat.set(cat, list);
   }
-  return [...byCat.entries()]
+  return Array.from(byCat.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([cat, list]) => [cat, mergeUpcomingByTitle(list)] as const);
 }

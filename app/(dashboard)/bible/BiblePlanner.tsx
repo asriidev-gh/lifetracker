@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Settings, X } from "lucide-react";
 import Swal from "sweetalert2";
@@ -272,7 +272,7 @@ export function BiblePlanner() {
     });
   }
 
-  async function loadPlan(silent = false) {
+  const loadPlan = useCallback(async (silent = false) => {
     if (!silent) {
       setLoading(true);
     }
@@ -281,26 +281,28 @@ export function BiblePlanner() {
       const data = await res.json();
       if (res.ok) {
         setPlan(data);
-        if (qaDayFilter === "all") {
+        setQaDayFilter((current) => {
+          if (current !== "all") return current;
           const latestQaDateKey = getLatestQaDateKey(
             Array.isArray(data?.qaHistory) ? data.qaHistory : []
           );
           if (latestQaDateKey) {
-            setQaDayFilter(latestQaDateKey);
             setQaPage(1);
+            return latestQaDateKey;
           }
-        }
+          return current;
+        });
       }
     } finally {
       if (!silent) {
         setLoading(false);
       }
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadPlan();
-  }, []);
+    void loadPlan();
+  }, [loadPlan]);
 
   useEffect(() => {
     return () => {

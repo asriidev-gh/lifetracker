@@ -115,7 +115,13 @@ export async function POST(request: Request) {
     const amount =
       category === "Finance" ? parseOptionalAmount(amountRaw) : undefined;
 
-    const serializeOne = (doc: InstanceType<typeof Activity>) => ({
+    const serializeOne = (doc: {
+      toObject(): Record<string, unknown>;
+      _id: { toString(): string };
+      userId: { toString(): string };
+      date: Date;
+      amount?: number;
+    }) => ({
       ...doc.toObject(),
       _id: doc._id.toString(),
       userId: doc.userId.toString(),
@@ -155,7 +161,7 @@ export async function POST(request: Request) {
           ...(amount !== undefined ? { amount } : {}),
         }))
       );
-      const activities = created.map((doc) => serializeOne(doc as InstanceType<typeof Activity>));
+      const activities = created.map((doc) => serializeOne(doc));
       return NextResponse.json({ activities, count: activities.length });
     }
 

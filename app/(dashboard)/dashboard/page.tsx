@@ -69,11 +69,6 @@ export default async function DashboardPage({
     startTime: a.startTime,
   }));
 
-  const byCategory = activities.reduce<Record<string, number>>((acc, a) => {
-    acc[a.category] = (acc[a.category] ?? 0) + (a.duration ?? 0);
-    return acc;
-  }, {});
-
   const chartFills = [
     "hsl(var(--chart-1))",
     "hsl(var(--chart-2))",
@@ -81,12 +76,6 @@ export default async function DashboardPage({
     "hsl(var(--chart-4))",
     "hsl(var(--chart-5))",
   ];
-  const categoryBreakdown = Object.entries(byCategory).map(([name, hours], i) => ({
-    name,
-    hours: Math.round(hours * 100) / 100,
-    fill: chartFills[i % chartFills.length],
-  }));
-
   /** Insights modal excludes future-dated rows so charts and bullets match “through today”. */
   const insightsActivities = activities.filter((a) => a.date.slice(0, 10) <= todayKey);
   const byCategoryInsights = insightsActivities.reduce<Record<string, number>>((acc, a) => {

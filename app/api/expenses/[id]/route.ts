@@ -90,7 +90,7 @@ export async function PUT(
     item.type = nextType;
     if (nextType === "recurring") {
       const raw = body?.dueDay !== undefined ? Number(body.dueDay) : item.dueDay;
-      if (!Number.isInteger(raw) || raw < 1 || raw > 31) {
+      if (raw === undefined || !Number.isInteger(raw) || raw < 1 || raw > 31) {
         return NextResponse.json({ error: "dueDay must be 1-31 for recurring expense" }, { status: 400 });
       }
       item.dueDay = raw;
