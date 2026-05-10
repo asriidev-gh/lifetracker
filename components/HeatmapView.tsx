@@ -19,6 +19,10 @@ export function HeatmapView() {
       .then((res) => res.json())
       .then((activities: { date: string; duration?: number }[]) => {
         const byDay: Record<string, number> = {};
+        if (!Array.isArray(activities)) {
+          setData(byDay);
+          return;
+        }
         for (const a of activities) {
           const d = a.date.slice(0, 10);
           byDay[d] = (byDay[d] ?? 0) + (a.duration ?? 0);

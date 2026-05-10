@@ -38,6 +38,9 @@ export function EditActivityDialog({
   const [endTime, setEndTime] = useState(activity.endTime);
   const [energyLevel, setEnergyLevel] = useState<EnergyLevel>(activity.energyLevel);
   const [notes, setNotes] = useState(activity.notes ?? "");
+  const [amount, setAmount] = useState(
+    activity.amount != null ? String(activity.amount) : ""
+  );
   const [saving, setSaving] = useState(false);
   const updateActivity = useActivityStore((s) => s.updateActivity);
 
@@ -49,6 +52,7 @@ export function EditActivityDialog({
     setEndTime(activity.endTime);
     setEnergyLevel(activity.energyLevel);
     setNotes(activity.notes ?? "");
+    setAmount(activity.amount != null ? String(activity.amount) : "");
   }, [activity]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -66,6 +70,7 @@ export function EditActivityDialog({
           endTime,
           energyLevel,
           notes,
+          ...(category === "Finance" ? { amount: amount.trim() } : {}),
         }),
       });
       if (!res.ok) throw new Error("Update failed");
@@ -80,7 +85,7 @@ export function EditActivityDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[min(90vh,40rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit activity</DialogTitle>
         </DialogHeader>
@@ -95,7 +100,13 @@ export function EditActivityDialog({
           </div>
           <div className="space-y-2">
             <Label>Category</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v)}>
+            <Select
+              value={category}
+              onValueChange={(v) => {
+                setCategory(v);
+                if (v !== "Finance") setAmount("");
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -108,6 +119,21 @@ export function EditActivityDialog({
               </SelectContent>
             </Select>
           </div>
+          {category === "Finance" ? (
+            <div className="space-y-2">
+              <Label htmlFor="edit-amount">Amount (optional)</Label>
+              <Input
+                id="edit-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="e.g. 42.50"
+              />
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date</Label>

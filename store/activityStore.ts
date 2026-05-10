@@ -5,6 +5,7 @@ interface ActivityState {
   activities: ActivityRecord[];
   setActivities: (activities: ActivityRecord[]) => void;
   addActivity: (activity: ActivityRecord) => void;
+  addActivities: (items: ActivityRecord[]) => void;
   updateActivity: (id: string, activity: Partial<ActivityRecord>) => void;
   removeActivity: (id: string) => void;
 }
@@ -14,6 +15,8 @@ export const useActivityStore = create<ActivityState>((set) => ({
   setActivities: (activities) => set({ activities }),
   addActivity: (activity) =>
     set((state) => ({ activities: [activity, ...state.activities] })),
+  addActivities: (items) =>
+    set((state) => ({ activities: [...items, ...state.activities] })),
   updateActivity: (id, update) =>
     set((state) => ({
       activities: state.activities.map((a) =>

@@ -1,6 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
+import { format, startOfDay } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { ActivityRecord } from "@/types/activity";
 import { Check, X } from "lucide-react";
 
@@ -13,8 +16,19 @@ const LIFE_PILLARS = [
   { key: "Personal", categories: ["Personal", "Learning"], label: "Personal growth" },
 ] as const;
 
-export function LifeScoreCard({ activities }: { activities: ActivityRecord[] }) {
-  const hoursByCategory = activities.reduce<Record<string, number>>((acc, a) => {
+export function LifeScoreCard({
+  activities,
+  balanceDescription = "Balance across life pillars today",
+}: {
+  activities: ActivityRecord[];
+  balanceDescription?: string;
+}) {
+  const activitiesThroughToday = useMemo(() => {
+    const todayKey = format(startOfDay(new Date()), "yyyy-MM-dd");
+    return activities.filter((a) => a.date.slice(0, 10) <= todayKey);
+  }, [activities]);
+
+  const hoursByCategory = activitiesThroughToday.reduce<Record<string, number>>((acc, a) => {
     acc[a.category] = (acc[a.category] ?? 0) + (a.duration ?? 0);
     return acc;
   }, {});
@@ -30,16 +44,19 @@ export function LifeScoreCard({ activities }: { activities: ActivityRecord[] }) 
     : 0;
 
   return (
-    <Card>
+    <Card
+      className={cn(
+        "border-dashboard-list-border bg-gradient-to-br from-dashboard-list via-card to-primary/[0.07]",
+        "shadow-md ring-1 ring-primary/[0.08]"
+      )}
+    >
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">Life Score</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          Balance across life pillars today
-        </p>
+        <p className="text-xs text-muted-foreground">{balanceDescription}</p>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-primary/15 text-2xl font-bold text-primary shadow-inner">
             {score}%
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">

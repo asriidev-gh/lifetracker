@@ -5,6 +5,13 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Activity } from "@/models/Activity";
 
+function parseOptionalAmount(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : parseFloat(String(raw).trim());
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.round(n * 100) / 100;
+}
+
 async function getUserId() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
@@ -37,6 +44,7 @@ export async function GET(
       _id: activity._id.toString(),
       userId: activity.userId.toString(),
       date: activity.date.toISOString().slice(0, 10),
+      amount: activity.amount ?? null,
     });
   } catch (error) {
     console.error("GET activity error:", error);
@@ -69,6 +77,9 @@ export async function PUT(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    const prevCategory = activity.category;
+    const prevAmount = activity.amount;
+
     const {
       title,
       category,
@@ -78,6 +89,7 @@ export async function PUT(
       endTime,
       energyLevel,
       notes,
+      amount: amountRaw,
     } = body;
 
     if (title !== undefined) activity.title = title;
@@ -91,6 +103,16 @@ export async function PUT(
     }
     if (notes !== undefined) activity.notes = notes;
 
+    let shouldUnsetAmount = false;
+    if (activity.category !== "Finance") {
+      shouldUnsetAmount = true;
+      activity.amount = undefined;
+    } else if (amountRaw !== undefined) {
+      const parsed = parseOptionalAmount(amountRaw);
+      activity.amount = parsed;
+      if (parsed === undefined) shouldUnsetAmount = true;
+    }
+
     if (
       activity.startTime &&
       activity.endTime
@@ -102,11 +124,26 @@ export async function PUT(
 
     await activity.save();
 
+    if (shouldUnsetAmount) {
+      await Activity.updateOne({ _id: activity._id, userId }, { $unset: { amount: "" } });
+      activity.amount = undefined;
+    }
+
+    const reportedAmount =
+      activity.category !== "Finance"
+        ? null
+        : amountRaw !== undefined
+          ? (parseOptionalAmount(amountRaw) ?? null)
+          : prevCategory === "Finance"
+            ? (prevAmount ?? null)
+            : null;
+
     return NextResponse.json({
       ...activity.toObject(),
       _id: activity._id.toString(),
       userId: activity.userId.toString(),
       date: activity.date.toISOString().slice(0, 10),
+      amount: reportedAmount,
     });
   } catch (error) {
     console.error("PUT activity error:", error);

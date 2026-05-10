@@ -29,6 +29,20 @@
     --chart-3: 47 96% 53%;
     --chart-4: 280 87% 65%;
     --chart-5: 340 82% 52%;
+    /* Dashboard: soft surfaces & accents (H S L for hsl(var(--))) */
+    --dashboard-hero: 214 45% 98%;
+    --dashboard-hero-border: 214 28% 90%;
+    --dashboard-panel: 0 0% 100%;
+    --dashboard-panel-muted: 210 40% 97%;
+    --dashboard-stat-a: 221 90% 97%;
+    --dashboard-stat-a-border: 221 55% 90%;
+    --dashboard-stat-b: 199 75% 96%;
+    --dashboard-stat-b-border: 199 45% 86%;
+    --dashboard-warn: 48 100% 96%;
+    --dashboard-warn-border: 38 88% 58%;
+    --dashboard-warn-fg: 26 75% 20%;
+    --dashboard-list: 0 0% 100%;
+    --dashboard-list-border: 214 22% 91%;
   }
 
   .dark {
@@ -56,6 +70,19 @@
     --chart-3: 47 92% 58%;
     --chart-4: 280 67% 58%;
     --chart-5: 340 75% 55%;
+    --dashboard-hero: 222 42% 10%;
+    --dashboard-hero-border: 217 28% 20%;
+    --dashboard-panel: 222 40% 11%;
+    --dashboard-panel-muted: 217 32% 14%;
+    --dashboard-stat-a: 221 45% 15%;
+    --dashboard-stat-a-border: 221 40% 26%;
+    --dashboard-stat-b: 199 38% 14%;
+    --dashboard-stat-b-border: 199 32% 26%;
+    --dashboard-warn: 28 38% 14%;
+    --dashboard-warn-border: 38 72% 48%;
+    --dashboard-warn-fg: 48 100% 92%;
+    --dashboard-list: 222 40% 11%;
+    --dashboard-list-border: 217 28% 20%;
   }
 }
 

@@ -1,11 +1,18 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { ActivityRecord } from "@/types/activity";
 
 const PRODUCTIVITY_TAGS = ["coding", "meetings", "learning", "side-project", "debugging"] as const;
 
-export function ProductivitySummary({ activities }: { activities: ActivityRecord[] }) {
+export function ProductivitySummary({
+  activities,
+  title = "Productivity today",
+}: {
+  activities: ActivityRecord[];
+  title?: string;
+}) {
   const byTag = activities.reduce<Record<string, number>>((acc, a) => {
     for (const tag of a.tags ?? []) {
       const t = tag.toLowerCase();
@@ -25,26 +32,37 @@ export function ProductivitySummary({ activities }: { activities: ActivityRecord
   }
 
   return (
-    <Card>
+    <Card
+      className={cn(
+        "border-dashboard-list-border bg-gradient-to-br from-dashboard-list via-card to-[hsl(var(--chart-3)_/_0.12)]",
+        "shadow-md ring-1 ring-[hsl(var(--chart-3)_/_0.18)]"
+      )}
+    >
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Productivity today</CardTitle>
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
         <p className="text-xs text-muted-foreground">
           Coding, meetings, learning (from tags)
         </p>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-3">
-          <div>
+          <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2">
             <p className="text-xs text-muted-foreground">Coding</p>
-            <p className="text-xl font-semibold">{codingHours.toFixed(1)}h</p>
+            <p className="text-xl font-semibold tabular-nums text-[hsl(var(--chart-1))]">
+              {codingHours.toFixed(1)}h
+            </p>
           </div>
-          <div>
+          <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2">
             <p className="text-xs text-muted-foreground">Meetings</p>
-            <p className="text-xl font-semibold">{meetingHours.toFixed(1)}h</p>
+            <p className="text-xl font-semibold tabular-nums text-[hsl(var(--chart-4))]">
+              {meetingHours.toFixed(1)}h
+            </p>
           </div>
-          <div>
+          <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2">
             <p className="text-xs text-muted-foreground">Learning</p>
-            <p className="text-xl font-semibold">{learningHours.toFixed(1)}h</p>
+            <p className="text-xl font-semibold tabular-nums text-[hsl(var(--chart-2))]">
+              {learningHours.toFixed(1)}h
+            </p>
           </div>
         </div>
       </CardContent>

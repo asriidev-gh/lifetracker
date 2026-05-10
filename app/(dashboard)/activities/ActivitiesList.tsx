@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -17,35 +17,60 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import Swal from "sweetalert2";
 import { useActivityStore } from "@/store/activityStore";
 import { ActivityRecord } from "@/types/activity";
 import { EditActivityDialog } from "./EditActivityDialog";
 
 export function ActivitiesList() {
   const activities = useActivityStore((s) => s.activities);
-  const setActivities = useActivityStore((s) => s.setActivities);
   const removeActivity = useActivityStore((s) => s.removeActivity);
   const [editing, setEditing] = useState<ActivityRecord | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/activities")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setActivities(data);
-      })
-      .catch(() => setActivities([]))
-      .finally(() => setLoading(false));
-  }, [setActivities]);
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this activity?")) return;
-    const res = await fetch(`/api/activities/${id}`, { method: "DELETE" });
-    if (res.ok) removeActivity(id);
-  }
+    const decision = await Swal.fire({
+      icon: "warning",
+      title: "Delete this activity?",
+      text: "This cannot be undone.",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      cancelButtonText: "Cancel",
+    });
+    if (!decision.isConfirmed) return;
 
-  if (loading) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    try {
+      const res = await fetch(`/api/activities/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        removeActivity(id);
+        await Swal.fire({
+          icon: "success",
+          title: "Activity deleted",
+          timer: 1500,
+          showConfirmButton: false,
+          toast: true,
+          position: "top-end",
+        });
+        return;
+      }
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      await Swal.fire({
+        icon: "error",
+        title: data?.error ?? "Could not delete activity",
+        timer: 2200,
+        showConfirmButton: false,
+        toast: true,
+        position: "top-end",
+      });
+    } catch {
+      await Swal.fire({
+        icon: "error",
+        title: "Something went wrong",
+        timer: 2200,
+        showConfirmButton: false,
+        toast: true,
+        position: "top-end",
+      });
+    }
   }
 
   if (activities.length === 0) {
@@ -65,6 +90,7 @@ export function ActivitiesList() {
               <TableHead>Date</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Category</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Notes</TableHead>
@@ -77,6 +103,14 @@ export function ActivitiesList() {
                 <TableCell className="font-medium">{a.date}</TableCell>
                 <TableCell>{a.title}</TableCell>
                 <TableCell>{a.category}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {a.category === "Finance" && a.amount != null
+                    ? a.amount.toLocaleString(undefined, {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2,
+                      })
+                    : "—"}
+                </TableCell>
                 <TableCell>
                   {a.startTime} – {a.endTime}
                 </TableCell>
@@ -98,7 +132,7 @@ export function ActivitiesList() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => handleDelete(a._id)}
+                        onClick={() => void handleDelete(a._id)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
@@ -113,6 +147,7 @@ export function ActivitiesList() {
       </div>
       {editing && (
         <EditActivityDialog
+          key={editing._id}
           activity={editing}
           open={!!editing}
           onClose={() => setEditing(null)}

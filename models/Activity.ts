@@ -14,6 +14,8 @@ export interface IActivity {
   duration: number;
   energyLevel: EnergyLevel;
   notes?: string;
+  /** Optional; used for Finance category */
+  amount?: number;
   createdAt: Date;
 }
 
@@ -33,6 +35,7 @@ const ActivitySchema = new Schema<IActivity>(
       default: "medium",
     },
     notes: { type: String },
+    amount: { type: Number },
     createdAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

@@ -21,7 +21,11 @@ export function TodoManager() {
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formExpanded, setFormExpanded] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [error, setError] = useState("");
+
+  const showForm = formExpanded || editingId !== null;
 
   async function loadTodos() {
     const res = await fetch("/api/todos");
@@ -44,7 +48,17 @@ export function TodoManager() {
     setNotes("");
     setDueDate("");
     setEditingId(null);
+    setFormExpanded(false);
     setError("");
+  }
+
+  function openCreateForm() {
+    setEditingId(null);
+    setTitle("");
+    setNotes("");
+    setDueDate("");
+    setError("");
+    setFormExpanded(true);
   }
 
   async function submitTodo() {
@@ -98,6 +112,7 @@ export function TodoManager() {
   }
 
   function startEdit(item: TodoItem) {
+    setFormExpanded(false);
     setEditingId(item._id);
     setTitle(item.title);
     setNotes(item.notes ?? "");
@@ -117,53 +132,98 @@ export function TodoManager() {
     [todos]
   );
 
+  const completedCount = useMemo(() => todos.filter((t) => t.completed).length, [todos]);
+
+  const displayTodos = useMemo(() => {
+    if (showCompleted) return sortedTodos;
+    return sortedTodos.filter((t) => !t.completed);
+  }, [sortedTodos, showCompleted]);
+
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{editingId ? "Edit To Do" : "Add To Do"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            placeholder="Task title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <Input
-            placeholder="Optional notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Due date (optional)</p>
-            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <div className="flex justify-end gap-2">
-            {editingId ? (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">To Do</h1>
+          <p className="text-muted-foreground">
+            Add, edit, complete, and track your tasks.
+          </p>
+        </div>
+        {!showForm ? (
+          <Button
+            type="button"
+            onClick={openCreateForm}
+            className="shrink-0 self-end sm:self-start"
+          >
+            Create to do
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="space-y-4">
+      {showForm ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{editingId ? "Edit To Do" : "Add To Do"}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="Task title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <Input
+              placeholder="Optional notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Due date (optional)</p>
+              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={resetForm}>
                 Cancel
               </Button>
-            ) : null}
-            <Button type="button" onClick={submitTodo} disabled={saving}>
-              {saving ? "Saving..." : editingId ? "Update" : "Add"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <Button type="button" onClick={submitTodo} disabled={saving}>
+                {saving ? "Saving..." : editingId ? "Update" : "Add"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>To Do List</CardTitle>
+          {completedCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 self-start sm:self-auto"
+              onClick={() => setShowCompleted((v) => !v)}
+            >
+              {showCompleted
+                ? "Hide completed"
+                : `Show completed (${completedCount})`}
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
-          ) : sortedTodos.length === 0 ? (
+          ) : todos.length === 0 ? (
             <p className="text-sm text-muted-foreground">No to do yet.</p>
+          ) : displayTodos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {completedCount > 0 && !showCompleted
+                ? "No active tasks. You are all caught up — use Show completed to review finished items."
+                : "No tasks in this view."}
+            </p>
           ) : (
             <div className="space-y-2">
-              {sortedTodos.map((item) => (
+              {displayTodos.map((item) => (
                 <div
                   key={item._id}
                   className="flex items-start justify-between gap-3 rounded-md border p-3"
@@ -208,6 +268,7 @@ export function TodoManager() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

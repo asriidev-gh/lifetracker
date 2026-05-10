@@ -6,9 +6,12 @@ import { Lightbulb } from "lucide-react";
 export function InsightsList({
   insights,
   totalHours,
+  periodLabel = "This week",
 }: {
   insights: string[];
   totalHours: number;
+  /** Shown next to the lightbulb (e.g. Today, This week) */
+  periodLabel?: string;
 }) {
   return (
     <div className="space-y-4">
@@ -16,7 +19,7 @@ export function InsightsList({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Lightbulb className="h-5 w-5 text-primary" />
-            This week
+            {periodLabel}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             Total: {totalHours.toFixed(1)}h logged

@@ -8,8 +8,6 @@ import {
   Calendar,
   ListTodo,
   BarChart3,
-  Flame,
-  Lightbulb,
   BookOpen,
   Settings,
   LogOut,
@@ -22,14 +20,12 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/activities", label: "Activities", icon: ListTodo },
   { href: "/todos", label: "To Do", icon: CheckSquare },
   { href: "/expenses", label: "Expense Plan", icon: Wallet },
   { href: "/calendar", label: "Calendar", icon: Calendar },
+  { href: "/activities", label: "Activities", icon: ListTodo },
   { href: "/bible", label: "Bible Journey", icon: BookOpen },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/insights", label: "Insights", icon: Lightbulb },
-  { href: "/heatmap", label: "Heatmap", icon: Flame },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
