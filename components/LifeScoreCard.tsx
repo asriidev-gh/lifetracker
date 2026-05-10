@@ -8,7 +8,7 @@ const LIFE_PILLARS = [
   { key: "Exercise", categories: ["Sports"], label: "Exercise" },
   { key: "Work", categories: ["Work"], label: "Work" },
   { key: "Social", categories: ["Social"], label: "Social" },
-  { key: "Spiritual", categories: ["Church"], label: "Spiritual" },
+  { key: "Spiritual", categories: ["Church", "Spiritual"], label: "Spiritual" },
   { key: "Family", categories: ["Family"], label: "Family" },
   { key: "Personal", categories: ["Personal", "Learning"], label: "Personal growth" },
 ] as const;

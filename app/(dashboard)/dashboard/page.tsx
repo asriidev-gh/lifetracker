@@ -1,5 +1,6 @@
 import { connectDB } from "@/lib/mongodb";
 import { Activity } from "@/models/Activity";
+import { Todo } from "@/models/Todo";
 import { requireAuth } from "@/lib/getSession";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { DashboardCards } from "./DashboardCards";
@@ -36,6 +37,12 @@ export default async function DashboardPage() {
 
   const totalHoursToday =
     todayActivities.reduce((sum, a) => sum + (a.duration ?? 0), 0);
+  const overdueTodos = await Todo.countDocuments({
+    userId,
+    completed: false,
+    dueDate: { $lt: todayStart },
+  });
+  const openTodos = await Todo.countDocuments({ userId, completed: false });
 
   const byCategory = todayActivities.reduce<Record<string, number>>(
     (acc, a) => {
@@ -66,6 +73,20 @@ export default async function DashboardPage() {
           todayActivities={todayActivities}
         />
       </div>
+
+      {(overdueTodos > 0 || openTodos > 0) && (
+        <div className="rounded-lg border bg-card p-4">
+          <p className="font-medium">
+            To Do reminder:{" "}
+            {overdueTodos > 0
+              ? `You have ${overdueTodos} overdue ${overdueTodos === 1 ? "task" : "tasks"}`
+              : `You have ${openTodos} open ${openTodos === 1 ? "task" : "tasks"}`}.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Review your remaining tasks in the To Do section.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <CategoryChart data={categoryBreakdown} title="Today's category breakdown" />

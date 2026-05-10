@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import { IBibleJourney } from "@/models/BibleJourney";
 
 type BookDef = { name: string; chapters: number };
@@ -206,8 +207,9 @@ function readWisdom(track: "psalms" | "proverbs", chapter: number) {
   return { reference, next };
 }
 
+/** Calendar day in the server local timezone (matches dashboard `startOfDay` / `endOfDay`). */
 export function getTodayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return format(new Date(), "yyyy-MM-dd");
 }
 
 export function buildTodayReadings(journey: IBibleJourney): BuildPlanResult {

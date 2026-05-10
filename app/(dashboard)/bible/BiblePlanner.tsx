@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Settings } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Check, Settings, X } from "lucide-react";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,6 +110,52 @@ function getChapterReference(value: string) {
   return normalizeReference(value).replace(/:\d.*$/, "").trim();
 }
 
+/** Strip leading/trailing punctuation so "Galilee." → "Galilee" for vocab keys. */
+function stripWordForVocab(raw: string): string {
+  return raw
+    .replace(/^[\s"'“”‘’.,;:!?()[\]{}—–-]+/g, "")
+    .replace(/[\s"'“”‘’.,;:!?()[\]{}—–-]+$/g, "")
+    .trim();
+}
+
+function readerTokenIsAskable(raw: string): boolean {
+  return /[A-Za-z\u00C0-\u024F]/.test(raw);
+}
+
+function normalizeVocabLookup(raw: string): string {
+  return stripWordForVocab(raw).toLowerCase();
+}
+
+function splitReaderTextIntoParts(text: string, keyPrefix: string | number) {
+  const parts: { key: string; text: string; isWord: boolean }[] = [];
+  const re = /\S+/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      parts.push({
+        key: `${keyPrefix}-sp-${lastIndex}`,
+        text: text.slice(lastIndex, m.index),
+        isWord: false,
+      });
+    }
+    parts.push({
+      key: `${keyPrefix}-w-${m.index}`,
+      text: m[0],
+      isWord: true,
+    });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push({
+      key: `${keyPrefix}-sp-${lastIndex}`,
+      text: text.slice(lastIndex),
+      isWord: false,
+    });
+  }
+  return parts;
+}
+
 function getLatestQaDateKey(items: QAHistoryItem[]) {
   if (items.length === 0) return null;
   return items
@@ -130,6 +177,26 @@ export function BiblePlanner() {
   const [readerVerses, setReaderVerses] = useState<VerseLine[]>([]);
   const [readerLoading, setReaderLoading] = useState(false);
   const [readerError, setReaderError] = useState("");
+  type ReaderAskAnchor = {
+    top: number;
+    left: number;
+    wordRaw: string;
+    wordDisplay: string;
+    verse: number;
+    verseText: string;
+    reference: string;
+  };
+  const [readerAskAnchor, setReaderAskAnchor] = useState<ReaderAskAnchor | null>(null);
+  const [readerAskBusy, setReaderAskBusy] = useState(false);
+  const [readerAskQuestion, setReaderAskQuestion] = useState("");
+  const [readerAskAnswer, setReaderAskAnswer] = useState("");
+  const [readerAskError, setReaderAskError] = useState("");
+  const [readerAskSaved, setReaderAskSaved] = useState(false);
+  const [readerAskSaving, setReaderAskSaving] = useState(false);
+  const readerAskDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readerAskPopoverRef = useRef<HTMLDivElement | null>(null);
+  /** True while the lookup panel is showing; avoids closing when the pointer crosses other words. */
+  const readerAskPopoverOpenRef = useRef(false);
   const [showSavedSummaries, setShowSavedSummaries] = useState(false);
   const [showAiQaSection, setShowAiQaSection] = useState(false);
   const [qaQuestion, setQaQuestion] = useState("");
@@ -241,6 +308,17 @@ export function BiblePlanner() {
       utteranceRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (readerOpen) return;
+    if (readerAskDelayRef.current) {
+      clearTimeout(readerAskDelayRef.current);
+      readerAskDelayRef.current = null;
+    }
+    readerAskPopoverOpenRef.current = false;
+    setReaderAskAnchor(null);
+    setReaderAskBusy(false);
+  }, [readerOpen]);
 
   useEffect(() => {
     if (!plan) return;
@@ -482,6 +560,13 @@ export function BiblePlanner() {
   }
 
   async function openReader(reference: string) {
+    if (readerAskDelayRef.current) {
+      clearTimeout(readerAskDelayRef.current);
+      readerAskDelayRef.current = null;
+    }
+    readerAskPopoverOpenRef.current = false;
+    setReaderAskAnchor(null);
+    setReaderAskBusy(false);
     setReaderReference(reference);
     setReaderText("");
     setReaderVerses([]);
@@ -520,6 +605,160 @@ export function BiblePlanner() {
       setReaderError("Unable to load passage right now. Please try again.");
     } finally {
       setReaderLoading(false);
+    }
+  }
+
+  function clearReaderAskDelayTimer() {
+    if (readerAskDelayRef.current) {
+      clearTimeout(readerAskDelayRef.current);
+      readerAskDelayRef.current = null;
+    }
+  }
+
+  function dismissReaderAskPopover() {
+    clearReaderAskDelayTimer();
+    readerAskPopoverOpenRef.current = false;
+    setReaderAskAnchor(null);
+    setReaderAskQuestion("");
+    setReaderAskAnswer("");
+    setReaderAskError("");
+    setReaderAskSaved(false);
+    setReaderAskSaving(false);
+  }
+
+  function handleReaderWordEnter(
+    e: React.MouseEvent<HTMLSpanElement>,
+    rawToken: string,
+    verse: number,
+    verseFullText: string
+  ) {
+    if (readerAskPopoverOpenRef.current) {
+      return;
+    }
+    clearReaderAskDelayTimer();
+    if (!readerTokenIsAskable(rawToken)) return;
+    const el = e.currentTarget;
+    readerAskDelayRef.current = setTimeout(() => {
+      readerAskDelayRef.current = null;
+      const r = el.getBoundingClientRect();
+      const wordDisplay = stripWordForVocab(rawToken) || rawToken;
+      const maxLeft =
+        typeof window !== "undefined" ? Math.max(8, window.innerWidth - 220) : r.left;
+      readerAskPopoverOpenRef.current = true;
+      setReaderAskQuestion(`What does "${wordDisplay}" mean in this verse?`);
+      setReaderAskAnswer("");
+      setReaderAskError("");
+      setReaderAskSaved(false);
+      setReaderAskAnchor({
+        top: r.bottom + 6,
+        left: Math.min(r.left, maxLeft),
+        wordRaw: rawToken,
+        wordDisplay,
+        verse,
+        verseText: verseFullText,
+        reference: readerReference,
+      });
+    }, 3000);
+  }
+
+  function handleReaderWordLeave() {
+    if (readerAskPopoverOpenRef.current) {
+      return;
+    }
+    clearReaderAskDelayTimer();
+  }
+
+  async function askReaderWordFromReader(anchor: ReaderAskAnchor) {
+    const word = anchor.wordDisplay.trim();
+    if (!word) {
+      await showError("Nothing to look up");
+      return;
+    }
+    const question = readerAskQuestion.trim();
+    if (!question) {
+      setReaderAskError("Please enter a question first.");
+      return;
+    }
+    setReaderAskBusy(true);
+    setReaderAskError("");
+    setReaderAskSaved(false);
+    try {
+      const verseLine =
+        anchor.verse > 0
+          ? `${anchor.reference} verse ${anchor.verse}: ${anchor.verseText}`
+          : `${anchor.reference}: ${anchor.verseText}`;
+      const meaningRes = await fetch("/api/bible/vocabulary-meaning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word,
+          reference: anchor.reference,
+          verseText: verseLine,
+          question,
+        }),
+      });
+      const meaningData = await meaningRes.json();
+      if (!meaningRes.ok) {
+        setReaderAskAnswer("");
+        setReaderAskError(meaningData?.error ?? "Failed to get meaning");
+        return;
+      }
+      const meaning =
+        typeof meaningData?.meaning === "string" ? meaningData.meaning.trim() : "";
+      if (!meaning) {
+        setReaderAskAnswer("");
+        setReaderAskError("No answer returned");
+        return;
+      }
+      setReaderAskAnswer(meaning);
+    } finally {
+      setReaderAskBusy(false);
+    }
+  }
+
+  async function saveReaderAskAnswer(anchor: ReaderAskAnchor) {
+    const word = anchor.wordDisplay.trim();
+    const meaning = readerAskAnswer.trim();
+    if (!word || !meaning) {
+      setReaderAskError("Ask first before saving.");
+      return;
+    }
+    setReaderAskSaving(true);
+    setReaderAskError("");
+    try {
+      const vocabList = plan?.vocabulary ?? [];
+      const match = vocabList.find(
+        (v) => normalizeVocabLookup(v.word) === normalizeVocabLookup(word)
+      );
+
+      let saveRes: Response;
+      if (match?._id) {
+        saveRes = await fetch("/api/bible/vocabulary", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: String(match._id),
+            word,
+            meaning,
+          }),
+        });
+      } else {
+        saveRes = await fetch("/api/bible/vocabulary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ word, meaning }),
+        });
+      }
+
+      if (!saveRes.ok) {
+        setReaderAskError("Failed to save vocabulary");
+        return;
+      }
+      await loadPlan(true);
+      setReaderAskSaved(true);
+      await showSuccess("Saved to vocabulary");
+    } finally {
+      setReaderAskSaving(false);
     }
   }
 
@@ -1740,10 +1979,22 @@ export function BiblePlanner() {
       </Card>
       )}
 
-      <Dialog open={readerOpen} onOpenChange={setReaderOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <Dialog modal={false} open={readerOpen} onOpenChange={setReaderOpen}>
+        <DialogContent
+          className="max-h-[90vh] max-w-3xl overflow-y-auto"
+          onInteractOutside={(event) => {
+            const target = event.target as Node | null;
+            if (target && readerAskPopoverRef.current?.contains(target)) {
+              event.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{readerReference || "Reading"}</DialogTitle>
+            <p className="text-left text-xs font-normal text-muted-foreground">
+              Hover a word for 3 seconds to open the lookup panel. Click Ask to look it up and save it
+              to your vocabulary, or the ✕ on the panel to close it.
+            </p>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto rounded-md border bg-muted/30 p-4">
             {readerLoading ? (
@@ -1764,7 +2015,30 @@ export function BiblePlanner() {
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm leading-7">
                         <sup className="mr-1 text-xs text-muted-foreground">{line.verse}</sup>
-                        {line.text}
+                        {splitReaderTextIntoParts(line.text, line.verse).map((part) =>
+                          part.isWord ? (
+                            <span
+                              key={part.key}
+                              className={
+                                readerTokenIsAskable(part.text)
+                                  ? "rounded px-0.5 hover:bg-muted/70"
+                                  : undefined
+                              }
+                              onMouseEnter={(e) => {
+                                if (!readerTokenIsAskable(part.text)) return;
+                                handleReaderWordEnter(e, part.text, line.verse, line.text);
+                              }}
+                              onMouseLeave={() => {
+                                if (!readerTokenIsAskable(part.text)) return;
+                                handleReaderWordLeave();
+                              }}
+                            >
+                              {part.text}
+                            </span>
+                          ) : (
+                            <span key={part.key}>{part.text}</span>
+                          )
+                        )}
                       </p>
                       <div className="flex shrink-0 gap-1">
                         <Button
@@ -1786,7 +2060,32 @@ export function BiblePlanner() {
                 ))}
               </div>
             ) : (
-              <p className="whitespace-pre-line text-sm leading-7">{readerText}</p>
+              <p className="whitespace-pre-line text-sm leading-7">
+                {splitReaderTextIntoParts(readerText, "plain").map((part) =>
+                  part.isWord ? (
+                    <span
+                      key={part.key}
+                      className={
+                        readerTokenIsAskable(part.text)
+                          ? "rounded px-0.5 hover:bg-muted/70"
+                          : undefined
+                      }
+                      onMouseEnter={(e) => {
+                        if (!readerTokenIsAskable(part.text)) return;
+                        handleReaderWordEnter(e, part.text, 0, readerText);
+                      }}
+                      onMouseLeave={() => {
+                        if (!readerTokenIsAskable(part.text)) return;
+                        handleReaderWordLeave();
+                      }}
+                    >
+                      {part.text}
+                    </span>
+                  ) : (
+                    <span key={part.key}>{part.text}</span>
+                  )
+                )}
+              </p>
             )}
           </div>
           <div className="flex items-center justify-end">
@@ -2022,6 +2321,83 @@ export function BiblePlanner() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {readerAskAnchor &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={readerAskPopoverRef}
+            role="dialog"
+            aria-label="Word lookup"
+            className="fixed z-[200] w-[min(340px,calc(100vw-16px))] max-h-[min(70vh,420px)] overflow-y-auto rounded-md border bg-background p-2 shadow-lg"
+            style={{
+              top: readerAskAnchor.top,
+              left: readerAskAnchor.left,
+            }}
+          >
+            <div className="mb-2 flex items-start justify-between gap-1">
+              <p
+                className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                title={readerAskAnchor.wordDisplay}
+              >
+                {readerAskAnchor.wordDisplay}
+              </p>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 shrink-0"
+                aria-label="Close"
+                onClick={dismissReaderAskPopover}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <textarea
+                value={readerAskQuestion}
+                onChange={(e) => {
+                  setReaderAskQuestion(e.target.value);
+                  setReaderAskSaved(false);
+                }}
+                placeholder={`Ask about "${readerAskAnchor.wordDisplay}"...`}
+                className="min-h-[70px] w-full rounded-md border bg-background px-2 py-1.5 text-xs outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="w-full"
+              onClick={() => void askReaderWordFromReader(readerAskAnchor)}
+              disabled={readerAskBusy}
+            >
+              {readerAskBusy ? "Working..." : "Ask"}
+            </Button>
+            {readerAskError ? (
+              <p className="mt-2 text-xs text-destructive">{readerAskError}</p>
+            ) : null}
+            {readerAskAnswer ? (
+              <div className="mt-2 space-y-2 rounded-md border bg-muted/20 p-2">
+                <p className="text-xs font-medium">Answer</p>
+                <p className="max-h-48 overflow-y-auto whitespace-pre-line text-xs leading-5 text-muted-foreground">
+                  {readerAskAnswer}
+                </p>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void saveReaderAskAnswer(readerAskAnchor)}
+                    disabled={readerAskSaving || readerAskSaved}
+                  >
+                    {readerAskSaved ? "Saved" : readerAskSaving ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

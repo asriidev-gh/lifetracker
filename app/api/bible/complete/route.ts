@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { startOfDay } from "date-fns";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { BibleJourney } from "@/models/BibleJourney";
@@ -69,7 +70,8 @@ export async function POST() {
       title: "Bible Reading Completed",
       category: "Spiritual",
       tags: ["Bible", "Bible Journey"],
-      date: new Date(`${today}T00:00:00.000Z`),
+      // Anchor to local calendar day so Activity.find({ date: startOfDay..endOfDay }) matches Bible "today".
+      date: startOfDay(new Date()),
       startTime: "06:00",
       endTime: "06:30",
       duration: 0.5,
