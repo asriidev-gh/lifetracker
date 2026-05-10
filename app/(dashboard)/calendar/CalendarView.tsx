@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   format,
   startOfMonth,
@@ -16,9 +16,13 @@ import {
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, CalendarPlus, Pencil } from "lucide-react";
 import { ActivityRecord } from "@/types/activity";
+import type { CalendarMarkRecord } from "@/types/calendarMark";
 import { cn } from "@/lib/utils";
+import { getMarkChipClass } from "@/lib/calendarMarkColors";
+import { MarkRecurringEventsDialog } from "./MarkRecurringEventsDialog";
+import { EditCalendarMarkDialog } from "./EditCalendarMarkDialog";
 
 const CATEGORY_COLOR_STYLES: Record<string, string> = {
   Sports: "bg-green-500/20 text-green-800 dark:text-green-200",
@@ -39,7 +43,10 @@ function getCategoryColor(category: string) {
 export function CalendarView() {
   const [current, setCurrent] = useState(new Date());
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [marks, setMarks] = useState<CalendarMarkRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [markDialogOpen, setMarkDialogOpen] = useState(false);
+  const [editingMark, setEditingMark] = useState<CalendarMarkRecord | null>(null);
 
   const { start, end, from, to } = useMemo(() => {
     const monthStart = startOfMonth(current);
@@ -54,12 +61,21 @@ export function CalendarView() {
     };
   }, [current]);
 
-  useEffect(() => {
-    fetch(`/api/activities?dateFrom=${from}&dateTo=${to}`)
+  const loadCalendarData = useCallback(() => {
+    const q = `dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}`;
+    fetch(`/api/activities?${q}`)
       .then((res) => res.json())
       .then((data) => (Array.isArray(data) ? setActivities(data) : setActivities([])))
       .catch(() => setActivities([]));
+    fetch(`/api/calendar-marks?${q}`)
+      .then((res) => res.json())
+      .then((data) => (Array.isArray(data) ? setMarks(data as CalendarMarkRecord[]) : setMarks([])))
+      .catch(() => setMarks([]));
   }, [from, to]);
+
+  useEffect(() => {
+    loadCalendarData();
+  }, [loadCalendarData]);
 
   const days: Date[] = [];
   let day = start;
@@ -78,30 +94,96 @@ export function CalendarView() {
     {}
   );
 
+  const marksByDate = marks.reduce<Record<string, CalendarMarkRecord[]>>((acc, m) => {
+    const d = m.date.slice(0, 10);
+    if (!acc[d]) acc[d] = [];
+    acc[d].push(m);
+    return acc;
+  }, {});
+
   const selectedActivities = selectedDate
     ? activitiesByDate[selectedDate] ?? []
     : [];
 
+  const selectedMarks = selectedDate ? marksByDate[selectedDate] ?? [] : [];
+
+  function dayChips(key: string) {
+    const dayMarks = marksByDate[key] ?? [];
+    const dayActivities = activitiesByDate[key] ?? [];
+    const chips: { id: string; label: string; className: string }[] = [];
+    for (const m of dayMarks) {
+      if (chips.length >= 3) break;
+      chips.push({
+        id: m._id,
+        label: m.title,
+        className: getMarkChipClass(m.colorKey),
+      });
+    }
+    for (const a of dayActivities) {
+      if (chips.length >= 3) break;
+      chips.push({
+        id: a._id,
+        label: a.title,
+        className: getCategoryColor(a.category),
+      });
+    }
+    const total = dayMarks.length + dayActivities.length;
+    const overflow = total - chips.length;
+    return { chips, overflow };
+  }
+
+  async function deleteMark(id: string) {
+    const res = await fetch(`/api/calendar-marks/${id}`, { method: "DELETE" });
+    if (res.ok) loadCalendarData();
+  }
+
   return (
     <div className="space-y-4">
+      <MarkRecurringEventsDialog
+        open={markDialogOpen}
+        onOpenChange={setMarkDialogOpen}
+        onSaved={loadCalendarData}
+      />
+      <EditCalendarMarkDialog
+        open={editingMark !== null}
+        mark={editingMark}
+        onOpenChange={(o) => {
+          if (!o) setEditingMark(null);
+        }}
+        onSaved={loadCalendarData}
+      />
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>{format(current, "MMMM yyyy")}</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setCurrent(subMonths(current, 1))}
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-2"
+              onClick={() => setMarkDialogOpen(true)}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <CalendarPlus className="h-4 w-4" />
+              Mark recurring events
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setCurrent(addMonths(current, 1))}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrent(subMonths(current, 1))}
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrent(addMonths(current, 1))}
+                aria-label="Next month"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -116,9 +198,12 @@ export function CalendarView() {
             {days.map((d) => {
               const key = format(d, "yyyy-MM-dd");
               const dayActivities = activitiesByDate[key] ?? [];
+              const dayMarks = marksByDate[key] ?? [];
+              const { chips, overflow } = dayChips(key);
               const isCurrentMonth = isSameMonth(d, current);
               const isSelected = selectedDate === key;
               const isTodayCell = isToday(d);
+              const totalItems = dayActivities.length + dayMarks.length;
 
               function handleDayActivate() {
                 setSelectedDate(key);
@@ -130,7 +215,7 @@ export function CalendarView() {
                   role="button"
                   tabIndex={0}
                   aria-current={isTodayCell ? "date" : undefined}
-                  aria-label={`${format(d, "EEEE, MMMM d, yyyy")}. ${dayActivities.length} activities.`}
+                  aria-label={`${format(d, "EEEE, MMMM d, yyyy")}. ${totalItems} items.`}
                   aria-pressed={isSelected}
                   onClick={(e) => {
                     if ((e.target as HTMLElement).closest("[data-add-activity]")) return;
@@ -167,24 +252,19 @@ export function CalendarView() {
                       {format(d, "d")}
                     </span>
                   </div>
-                  {dayActivities.length > 0 && (
+                  {chips.length > 0 && (
                     <div className="pointer-events-none mt-1 space-y-0.5">
-                      {dayActivities.slice(0, 2).map((a) => (
+                      {chips.map((c) => (
                         <div
-                          key={a._id}
-                          className={cn(
-                            "truncate rounded px-1 text-xs",
-                            getCategoryColor(a.category)
-                          )}
-                          title={a.title}
+                          key={c.id}
+                          className={cn("truncate rounded px-1 text-xs", c.className)}
+                          title={c.label}
                         >
-                          {a.title}
+                          {c.label}
                         </div>
                       ))}
-                      {dayActivities.length > 2 && (
-                        <div className="text-xs text-muted-foreground">
-                          +{dayActivities.length - 2} more
-                        </div>
+                      {overflow > 0 && (
+                        <div className="text-xs text-muted-foreground">+{overflow} more</div>
                       )}
                     </div>
                   )}
@@ -223,43 +303,92 @@ export function CalendarView() {
       {selectedDate && (
         <Card>
           <CardHeader>
-            <CardTitle>Activities on {selectedDate}</CardTitle>
+            <CardTitle>Day details · {selectedDate}</CardTitle>
           </CardHeader>
-          <CardContent>
-            {selectedActivities.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No activities on this day.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {selectedActivities.map((a) => (
-                  <li
-                    key={a._id}
-                    className="flex justify-between rounded-lg border p-3 text-sm"
-                  >
-                    <div className="space-y-1">
-                      <p className="font-medium">{a.title}</p>
-                      <p className="text-muted-foreground">
+          <CardContent className="space-y-6">
+            {selectedMarks.length > 0 ? (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">Marked events</h3>
+                <ul className="space-y-2">
+                  {selectedMarks.map((m) => (
+                    <li
+                      key={m._id}
+                      className="flex items-start justify-between gap-3 rounded-lg border p-3 text-sm"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-medium">{m.title}</p>
                         <span
                           className={cn(
-                            "mr-1 inline-flex rounded px-1.5 py-0.5 text-xs font-medium",
-                            getCategoryColor(a.category)
+                            "inline-flex rounded px-1.5 py-0.5 text-xs font-medium",
+                            getMarkChipClass(m.colorKey)
                           )}
                         >
-                          {a.category}
+                          Highlight
                         </span>
-                        {a.startTime} – {a.endTime} ({a.duration}h)
-                      </p>
-                      {a.notes && a.notes.trim().length > 0 && (
-                        <p className="text-muted-foreground text-xs">
-                          {a.notes}
+                        {m.details && m.details.trim().length > 0 && (
+                          <p className="text-xs text-muted-foreground">{m.details}</p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => setEditingMark(m)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => void deleteMark(m._id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Activities</h3>
+              {selectedActivities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activities on this day.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {selectedActivities.map((a) => (
+                    <li
+                      key={a._id}
+                      className="flex justify-between rounded-lg border p-3 text-sm"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium">{a.title}</p>
+                        <p className="text-muted-foreground">
+                          <span
+                            className={cn(
+                              "mr-1 inline-flex rounded px-1.5 py-0.5 text-xs font-medium",
+                              getCategoryColor(a.category)
+                            )}
+                          >
+                            {a.category}
+                          </span>
+                          {a.startTime} – {a.endTime} ({a.duration}h)
                         </p>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                        {a.notes && a.notes.trim().length > 0 && (
+                          <p className="text-muted-foreground text-xs">{a.notes}</p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
