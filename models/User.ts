@@ -6,6 +6,8 @@ export interface IUser {
   email: string;
   password?: string;
   image?: string;
+  failedLoginAttempts: number;
+  lockUntil?: Date;
   createdAt: Date;
 }
 
@@ -15,6 +17,8 @@ const UserSchema = new Schema<IUser>(
     email: { type: String, required: true, unique: true },
     password: { type: String },
     image: { type: String },
+    failedLoginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date },
     createdAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

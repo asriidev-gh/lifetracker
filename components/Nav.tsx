@@ -14,6 +14,7 @@ import {
   PlusCircle,
   CheckSquare,
   Wallet,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/todos", label: "To Do", icon: CheckSquare },
   { href: "/expenses", label: "Expense Plan", icon: Wallet },
+  { href: "/password-manager", label: "Password Manager", icon: KeyRound },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/activities", label: "Activities", icon: ListTodo },
   { href: "/bible", label: "Bible Journey", icon: BookOpen },

@@ -4,6 +4,10 @@ import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { connectDB } from "./mongodb";
 import { User } from "@/models/User";
+import { sendFailedLoginLockoutAlert } from "./failedLoginAlert";
+
+const MAX_FAILED_LOGIN_ATTEMPTS = 3;
+const LOGIN_LOCKOUT_MS = 30 * 60 * 1000;
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,10 +20,54 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
         await connectDB();
-        const user = await User.findOne({ email: credentials.email });
+        const user = await User.findOne({ email: credentials.email }).select(
+          "name email image password failedLoginAttempts lockUntil"
+        );
         if (!user?.password) return null;
+        const now = Date.now();
+        if (user.lockUntil && user.lockUntil.getTime() > now) {
+          return null;
+        }
+        if (user.lockUntil && user.lockUntil.getTime() <= now) {
+          await User.updateOne(
+            { _id: user._id },
+            { $set: { failedLoginAttempts: 0 }, $unset: { lockUntil: 1 } }
+          );
+          user.failedLoginAttempts = 0;
+          user.lockUntil = undefined;
+        }
         const valid = await bcrypt.compare(credentials.password, user.password);
-        if (!valid) return null;
+        if (!valid) {
+          const failed = (user.failedLoginAttempts ?? 0) + 1;
+          if (failed >= MAX_FAILED_LOGIN_ATTEMPTS) {
+            await User.updateOne(
+              { _id: user._id },
+              {
+                $set: {
+                  failedLoginAttempts: 0,
+                  lockUntil: new Date(now + LOGIN_LOCKOUT_MS),
+                },
+              }
+            );
+            try {
+              await sendFailedLoginLockoutAlert({
+                userEmail: user.email,
+                reason: "credentials-signin",
+              });
+            } catch (emailErr) {
+              console.error("Failed to send lockout alert email:", emailErr);
+            }
+          } else {
+            await User.updateOne({ _id: user._id }, { $set: { failedLoginAttempts: failed } });
+          }
+          return null;
+        }
+        if ((user.failedLoginAttempts ?? 0) > 0 || user.lockUntil) {
+          await User.updateOne(
+            { _id: user._id },
+            { $set: { failedLoginAttempts: 0 }, $unset: { lockUntil: 1 } }
+          );
+        }
         return {
           id: user._id.toString(),
           name: user.name,
