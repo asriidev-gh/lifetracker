@@ -92,7 +92,7 @@ function groupActivitiesByDate(activities: ActivityRecord[]) {
     list.push(a);
     map.set(key, list);
   }
-  return [...map.entries()].sort(([da], [db]) => da.localeCompare(db));
+  return Array.from(map.entries()).sort(([da], [db]) => da.localeCompare(db));
 }
 
 type UpcomingPreviewMergedRow = {
