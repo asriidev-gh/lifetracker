@@ -1,6 +1,7 @@
 import type { NoteCategoryKey } from "@/lib/noteCategories";
+import type { NoteColorKey } from "@/lib/noteColors";
 
-export type { NoteCategoryKey };
+export type { NoteCategoryKey, NoteColorKey };
 
 export interface NoteRecord {
   _id: string;
@@ -8,6 +9,7 @@ export interface NoteRecord {
   title: string;
   content: string;
   category: NoteCategoryKey;
+  colorKey: NoteColorKey;
   isPinned: boolean;
   isArchived: boolean;
   createdAt: string;

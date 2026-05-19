@@ -7,6 +7,7 @@ import {
   CALENDAR_MARK_COLOR_KEYS,
   type CalendarMarkColorKey,
 } from "@/lib/calendarMarkColors";
+import { expandRecurringMarks, normalizeRecurrence } from "@/lib/calendarMarkRecurrence";
 import { serializeCalendarMark } from "@/lib/serializeCalendarMark";
 
 const ALLOWED_COLORS = new Set<string>(CALENDAR_MARK_COLOR_KEYS);
@@ -27,18 +28,42 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo");
 
     await connectDB();
-    const filter: Record<string, unknown> = { userId };
-    if (dateFrom) {
-      filter.date = { ...(filter.date as object), $gte: new Date(dateFrom) };
-    }
-    if (dateTo) {
-      filter.date = {
-        ...(filter.date as object),
-        $lte: new Date(dateTo + "T23:59:59.999Z"),
-      };
+
+    if (dateFrom && dateTo) {
+      const [oneTimeMarks, recurringTemplates] = await Promise.all([
+        CalendarMark.find({
+          userId,
+          $or: [
+            { recurrence: "one-time" },
+            { recurrence: { $exists: false } },
+            { recurrence: null },
+          ],
+          date: {
+            $gte: new Date(dateFrom),
+            $lte: new Date(dateTo + "T23:59:59.999Z"),
+          },
+        })
+          .sort({ date: 1, title: 1 })
+          .lean(),
+        CalendarMark.find({
+          userId,
+          recurrence: { $in: ["weekly", "monthly"] },
+        })
+          .sort({ date: 1, title: 1 })
+          .lean(),
+      ]);
+
+      const serializedOneTime = oneTimeMarks.map((m) => serializeCalendarMark(m));
+      const serializedTemplates = recurringTemplates.map((m) => serializeCalendarMark(m));
+      const expanded = expandRecurringMarks(serializedTemplates, dateFrom, dateTo);
+      const combined = [...serializedOneTime, ...expanded].sort((a, b) => {
+        const byDate = a.date.localeCompare(b.date);
+        return byDate !== 0 ? byDate : a.title.localeCompare(b.title);
+      });
+      return NextResponse.json(combined);
     }
 
-    const marks = await CalendarMark.find(filter).sort({ date: 1, title: 1 }).lean();
+    const marks = await CalendarMark.find({ userId }).sort({ date: 1, title: 1 }).lean();
     return NextResponse.json(marks.map((m) => serializeCalendarMark(m)));
   } catch (error) {
     console.error("GET calendar-marks error:", error);
@@ -72,6 +97,7 @@ export async function POST(request: Request) {
       title: string;
       details?: string;
       colorKey: CalendarMarkColorKey;
+      recurrence: ReturnType<typeof normalizeRecurrence>;
     }[] = [];
 
     for (const item of raw) {
@@ -93,6 +119,7 @@ export async function POST(request: Request) {
         date: new Date(`${dateStr}T12:00:00`),
         title,
         colorKey,
+        recurrence: normalizeRecurrence(item?.recurrence),
       };
       if (detailsRaw) doc.details = detailsRaw;
       docs.push(doc);

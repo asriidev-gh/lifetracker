@@ -21,8 +21,12 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { MARK_COLOR_OPTIONS, getMarkChipClass } from "@/lib/calendarMarkColors";
-import type { CalendarMarkRecord } from "@/types/calendarMark";
-import { Plus, Trash2, X } from "lucide-react";
+import { recurrenceLabel, resolveMarkId } from "@/lib/calendarMarkRecurrence";
+import type { CalendarMarkRecord, CalendarMarkRecurrence } from "@/types/calendarMark";
+import { EditCalendarMarkDialog } from "./EditCalendarMarkDialog";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
+
+const RECURRENCE_OPTIONS: CalendarMarkRecurrence[] = ["one-time", "weekly", "monthly"];
 
 type DraftRow = {
   id: string;
@@ -30,6 +34,7 @@ type DraftRow = {
   title: string;
   details: string;
   colorKey: string;
+  recurrence: CalendarMarkRecurrence;
 };
 
 function newRow(): DraftRow {
@@ -39,6 +44,7 @@ function newRow(): DraftRow {
     title: "",
     details: "",
     colorKey: "sky",
+    recurrence: "one-time",
   };
 }
 
@@ -60,6 +66,8 @@ export function MarkRecurringEventsDialog({
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [existingMarks, setExistingMarks] = useState<CalendarMarkRecord[]>([]);
   const [existingError, setExistingError] = useState("");
+  const [editingMark, setEditingMark] = useState<CalendarMarkRecord | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function reset() {
     setRows([newRow()]);
@@ -68,6 +76,8 @@ export function MarkRecurringEventsDialog({
     setLoadingExisting(false);
     setExistingMarks([]);
     setExistingError("");
+    setEditingMark(null);
+    setDeletingId(null);
   }
 
   function handleOpenChange(next: boolean) {
@@ -115,6 +125,33 @@ export function MarkRecurringEventsDialog({
     }
   }
 
+  async function deleteExistingMark(mark: CalendarMarkRecord) {
+    const id = resolveMarkId(mark.sourceId ?? mark._id);
+    setDeletingId(id);
+    setExistingError("");
+    try {
+      const res = await fetch(`/api/calendar-marks/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setExistingError(
+          typeof data?.error === "string" ? data.error : "Could not delete event"
+        );
+        return;
+      }
+      await loadExistingMarks();
+      onSaved();
+    } catch {
+      setExistingError("Could not delete event");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function handleMarkEdited() {
+    void loadExistingMarks();
+    onSaved();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -124,6 +161,7 @@ export function MarkRecurringEventsDialog({
         title: row.title.trim(),
         details: row.details.trim() || undefined,
         colorKey: row.colorKey,
+        recurrence: row.recurrence,
       }))
       .filter((m) => m.date && m.title);
 
@@ -157,13 +195,22 @@ export function MarkRecurringEventsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <>
+      <EditCalendarMarkDialog
+        open={editingMark !== null}
+        mark={editingMark}
+        onOpenChange={(o) => {
+          if (!o) setEditingMark(null);
+        }}
+        onSaved={handleMarkEdited}
+      />
+      <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[min(90vh,640px)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Mark recurring events</DialogTitle>
           <DialogDescription>
-            Choose dates and labels to highlight on the calendar. Add multiple rows, then submit to
-            apply all at once.
+            Choose a date, repeat schedule, and label for each event. Weekly events repeat on the
+            same weekday; monthly events repeat on the same day of the month.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -177,7 +224,29 @@ export function MarkRecurringEventsDialog({
                   #{index + 1}
                 </span>
                 <div className="space-y-2">
-                  <Label htmlFor={`mark-date-${row.id}`}>Date</Label>
+                  <Label>Repeat</Label>
+                  <Select
+                    value={row.recurrence}
+                    onValueChange={(v) =>
+                      updateRow(row.id, { recurrence: v as CalendarMarkRecurrence })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECURRENCE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {recurrenceLabel(opt)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`mark-date-${row.id}`}>
+                    {row.recurrence === "one-time" ? "Date" : "Starting date"}
+                  </Label>
                   <Input
                     id={`mark-date-${row.id}`}
                     type="date"
@@ -270,23 +339,58 @@ export function MarkRecurringEventsDialog({
                 <p className="text-sm text-muted-foreground">No recurring events yet.</p>
               ) : (
                 <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                  {existingMarks.map((m) => (
-                    <li key={m._id} className="rounded-md border p-2 text-sm">
-                      <p className="font-medium">{m.title}</p>
-                      <p className="text-xs text-muted-foreground">{m.date.slice(0, 10)}</p>
-                      <span
-                        className={cn(
-                          "mt-1 inline-flex rounded px-1.5 py-0.5 text-xs font-medium",
-                          getMarkChipClass(m.colorKey)
-                        )}
+                  {existingMarks.map((m) => {
+                    const markId = resolveMarkId(m.sourceId ?? m._id);
+                    const isDeleting = deletingId === markId;
+                    return (
+                      <li
+                        key={m._id}
+                        className="flex items-start justify-between gap-2 rounded-md border p-2 text-sm"
                       >
-                        Highlight
-                      </span>
-                      {m.details && m.details.trim().length > 0 ? (
-                        <p className="mt-1 text-xs text-muted-foreground">{m.details}</p>
-                      ) : null}
-                    </li>
-                  ))}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="font-medium">{m.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {m.date.slice(0, 10)} · {recurrenceLabel(m.recurrence)}
+                          </p>
+                          <span
+                            className={cn(
+                              "inline-flex rounded px-1.5 py-0.5 text-xs font-medium",
+                              getMarkChipClass(m.colorKey)
+                            )}
+                          >
+                            Highlight
+                          </span>
+                          {m.details && m.details.trim().length > 0 ? (
+                            <p className="text-xs text-muted-foreground">{m.details}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 px-2"
+                            disabled={isDeleting}
+                            onClick={() => setEditingMark(m)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 px-2 text-destructive hover:text-destructive"
+                            disabled={isDeleting}
+                            onClick={() => void deleteExistingMark(m)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {isDeleting ? "Deleting…" : "Delete"}
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -306,5 +410,6 @@ export function MarkRecurringEventsDialog({
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

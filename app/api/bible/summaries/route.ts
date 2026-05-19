@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { BibleJourney } from "@/models/BibleJourney";
+import { buildTodayReadings, getTodayKey } from "@/lib/biblePlan";
+import { markReferenceReadToday } from "@/lib/bibleReadProgress";
 
 export async function POST(request: Request) {
   try {
@@ -39,8 +41,13 @@ export async function POST(request: Request) {
       ...(journey.chapterSummaries ?? []),
       { reference, summary, createdAt: new Date().toISOString() },
     ];
+
+    const today = getTodayKey();
+    const plan = buildTodayReadings(journey);
+    const readKey = markReferenceReadToday(journey, today, reference, plan.readings);
+
     await journey.save();
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, readKey });
   } catch (error) {
     console.error("POST bible/summaries error:", error);
     return NextResponse.json({ error: "Failed to save chapter summary" }, { status: 500 });

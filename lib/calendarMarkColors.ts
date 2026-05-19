@@ -35,3 +35,39 @@ export const MARK_CHIP_CLASSES: Record<string, string> = {
 export function getMarkChipClass(colorKey: string) {
   return MARK_CHIP_CLASSES[colorKey] ?? MARK_CHIP_CLASSES.sky;
 }
+
+/** Full day-cell border (calendar grid) */
+export const MARK_DAY_BORDER_CLASSES: Record<string, string> = {
+  sky: "border-sky-500/80 dark:border-sky-400/80",
+  rose: "border-rose-500/80 dark:border-rose-400/80",
+  amber: "border-amber-500/80 dark:border-amber-400/80",
+  emerald: "border-emerald-500/80 dark:border-emerald-400/80",
+  violet: "border-violet-500/80 dark:border-violet-400/80",
+  orange: "border-orange-500/80 dark:border-orange-400/80",
+  cyan: "border-cyan-500/80 dark:border-cyan-400/80",
+  fuchsia: "border-fuchsia-500/80 dark:border-fuchsia-400/80",
+  lime: "border-lime-500/80 dark:border-lime-400/80",
+  slate: "border-slate-500/80 dark:border-slate-400/80",
+};
+
+/** Top accent strip segment inside a day cell */
+export const MARK_DAY_STRIPE_CLASSES: Record<string, string> = {
+  sky: "bg-sky-500 dark:bg-sky-400",
+  rose: "bg-rose-500 dark:bg-rose-400",
+  amber: "bg-amber-500 dark:bg-amber-400",
+  emerald: "bg-emerald-500 dark:bg-emerald-400",
+  violet: "bg-violet-500 dark:bg-violet-400",
+  orange: "bg-orange-500 dark:bg-orange-400",
+  cyan: "bg-cyan-500 dark:bg-cyan-400",
+  fuchsia: "bg-fuchsia-500 dark:bg-fuchsia-400",
+  lime: "bg-lime-500 dark:bg-lime-400",
+  slate: "bg-slate-500 dark:bg-slate-400",
+};
+
+export function getMarkDayBorderClass(colorKey: string) {
+  return MARK_DAY_BORDER_CLASSES[colorKey] ?? MARK_DAY_BORDER_CLASSES.sky;
+}
+
+export function getMarkDayStripeClass(colorKey: string) {
+  return MARK_DAY_STRIPE_CLASSES[colorKey] ?? MARK_DAY_STRIPE_CLASSES.sky;
+}

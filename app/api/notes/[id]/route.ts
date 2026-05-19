@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Note } from "@/models/Note";
 import { isNoteCategoryKey, type NoteCategoryKey } from "@/lib/noteCategories";
+import { isNoteColorKey, normalizeNoteColorKey } from "@/lib/noteColors";
 
 function contentToPlainText(content: string) {
   return content
@@ -31,6 +32,7 @@ function serializeNote(doc: {
   title: string;
   content: string;
   category?: string;
+  colorKey?: string;
   isPinned?: boolean;
   isArchived?: boolean;
   createdAt: Date;
@@ -44,6 +46,7 @@ function serializeNote(doc: {
     title: doc.title,
     content: doc.content,
     category,
+    colorKey: normalizeNoteColorKey(doc.colorKey),
     isPinned: !!doc.isPinned,
     isArchived: !!doc.isArchived,
     createdAt: doc.createdAt.toISOString(),
@@ -91,6 +94,13 @@ export async function PUT(
         return NextResponse.json({ error: "Invalid category" }, { status: 400 });
       }
       note.category = categoryRaw;
+    }
+    if (body?.colorKey !== undefined) {
+      const colorRaw = typeof body.colorKey === "string" ? body.colorKey : "";
+      if (!isNoteColorKey(colorRaw)) {
+        return NextResponse.json({ error: "Invalid colorKey" }, { status: 400 });
+      }
+      note.colorKey = colorRaw;
     }
     if (body?.isPinned !== undefined) note.isPinned = !!body.isPinned;
     if (body?.isArchived !== undefined) note.isArchived = !!body.isArchived;

@@ -13,12 +13,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { NoteRecord } from "@/types/note";
+import type { NoteRecord, NoteColorKey } from "@/types/note";
+import {
+  getNoteColorSwatchClass,
+  getNotePadBgClass,
+  NOTE_COLOR_OPTIONS,
+} from "@/lib/noteColors";
 import {
   getNoteCategoryLabel,
   NOTE_CATEGORY_OPTIONS,
   type NoteCategoryKey,
 } from "@/lib/noteCategories";
+import { htmlToPlainText } from "@/lib/noteHtml";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -41,18 +47,6 @@ import {
 
 type CategoryFilter = "all" | NoteCategoryKey;
 
-function htmlToPlainText(html: string) {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .trim();
-}
-
 export function NotesManager() {
   const [notes, setNotes] = useState<NoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,13 +57,14 @@ export function NotesManager() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState<NoteCategoryKey>("quick");
+  const [colorKey, setColorKey] = useState<NoteColorKey>("default");
   const [isPinned, setIsPinned] = useState(false);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
 
-  const editor = useEditor({
-    extensions: [
+  const editorExtensions = useMemo(
+    () => [
       StarterKit,
       Underline,
       Link.configure({
@@ -78,11 +73,17 @@ export function NotesManager() {
         protocols: ["http", "https", "mailto", "tel"],
       }),
     ],
+    []
+  );
+
+  const editor = useEditor({
+    extensions: editorExtensions,
     content: "",
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class:
-          "min-h-[360px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none",
+          "min-h-[360px] w-full rounded-md border border-input/60 bg-transparent px-3 py-2 text-sm focus:outline-none",
       },
     },
     onUpdate: ({ editor: e }) => {
@@ -111,6 +112,7 @@ export function NotesManager() {
     setTitle("");
     setContent("");
     setCategory("quick");
+    setColorKey("default");
     setIsPinned(false);
     setError("");
     editor?.commands.setContent("", { emitUpdate: false });
@@ -125,6 +127,7 @@ export function NotesManager() {
     setTitle(note.title);
     setContent(note.content);
     setCategory(note.category);
+    setColorKey(note.colorKey ?? "default");
     setIsPinned(note.isPinned);
     setError("");
     editor?.commands.setContent(note.content || "", { emitUpdate: false });
@@ -138,6 +141,7 @@ export function NotesManager() {
         title: title.trim(),
         content,
         category,
+        colorKey,
         isPinned,
       };
       const res = await fetch(selectedId ? `/api/notes/${selectedId}` : "/api/notes", {
@@ -262,7 +266,10 @@ export function NotesManager() {
                     onClick={() => startEdit(note)}
                     className={cn(
                       "w-full rounded-md border p-3 text-left transition-colors",
-                      selectedId === note._id ? "border-primary bg-primary/10" : "hover:bg-muted/50"
+                      getNotePadBgClass(note.colorKey ?? "default"),
+                      selectedId === note._id
+                        ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        : "hover:brightness-[0.98] dark:hover:brightness-110"
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -283,7 +290,7 @@ export function NotesManager() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={cn("overflow-hidden", getNotePadBgClass(colorKey))}>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle>{selectedId ? "Edit note" : "Create note"}</CardTitle>
             {selectedId ? (
@@ -337,8 +344,30 @@ export function NotesManager() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Notepad color</Label>
+              <div className="flex flex-wrap gap-2">
+                {NOTE_COLOR_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    title={opt.label}
+                    aria-label={opt.label}
+                    aria-pressed={colorKey === opt.key}
+                    onClick={() => setColorKey(opt.key)}
+                    className={cn(
+                      "h-8 w-8 rounded-full border-2 transition-transform hover:scale-105",
+                      getNoteColorSwatchClass(opt.key),
+                      colorKey === opt.key
+                        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        : "border-transparent"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
               <Label>Content</Label>
-              <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/20 p-1">
+              <div className="flex flex-wrap items-center gap-1 rounded-md border border-input/60 bg-background/40 p-1 dark:bg-background/20">
                 <Button
                   type="button"
                   size="sm"
@@ -421,7 +450,14 @@ export function NotesManager() {
                   <Redo2 className="h-4 w-4" />
                 </Button>
               </div>
-              <EditorContent editor={editor} />
+              {editor ? (
+                <EditorContent editor={editor} />
+              ) : (
+                <div
+                  className="min-h-[360px] w-full rounded-md border border-input bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+                  aria-hidden
+                />
+              )}
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end gap-2">

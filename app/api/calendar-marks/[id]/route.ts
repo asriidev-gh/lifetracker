@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { CalendarMark } from "@/models/CalendarMark";
 import { CALENDAR_MARK_COLOR_KEYS } from "@/lib/calendarMarkColors";
+import { normalizeRecurrence, resolveMarkId } from "@/lib/calendarMarkRecurrence";
 import { serializeCalendarMark } from "@/lib/serializeCalendarMark";
 
 const ALLOWED_COLORS = new Set<string>(CALENDAR_MARK_COLOR_KEYS);
@@ -26,7 +27,8 @@ export async function PUT(
     }
 
     const { id } = await params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    const markId = resolveMarkId(id);
+    if (!mongoose.Types.ObjectId.isValid(markId)) {
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
@@ -36,7 +38,7 @@ export async function PUT(
     }
 
     await connectDB();
-    const mark = await CalendarMark.findOne({ _id: id, userId });
+    const mark = await CalendarMark.findOne({ _id: markId, userId });
     if (!mark) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -70,6 +72,10 @@ export async function PUT(
       mark.colorKey = ck;
     }
 
+    if (body.recurrence !== undefined) {
+      mark.recurrence = normalizeRecurrence(body.recurrence);
+    }
+
     await mark.save();
     return NextResponse.json(serializeCalendarMark(mark.toObject()));
   } catch (error) {
@@ -89,12 +95,13 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    const markId = resolveMarkId(id);
+    if (!mongoose.Types.ObjectId.isValid(markId)) {
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
     await connectDB();
-    const result = await CalendarMark.findOneAndDelete({ _id: id, userId });
+    const result = await CalendarMark.findOneAndDelete({ _id: markId, userId });
     if (!result) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }

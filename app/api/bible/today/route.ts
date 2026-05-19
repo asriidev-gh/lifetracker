@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { BibleJourney } from "@/models/BibleJourney";
 import { buildTodayReadings, getTodayKey } from "@/lib/biblePlan";
+import { getTodayReadKeys } from "@/lib/bibleReadProgress";
 
 export async function GET() {
   try {
@@ -51,9 +52,12 @@ export async function GET() {
       .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
       .slice(0, 200);
 
+    const readItemKeys = getTodayReadKeys(journey, today, plan.readings);
+
     return NextResponse.json({
       today,
       completedToday,
+      readItemKeys,
       streak: {
         current: journey.currentStreak ?? 0,
         best: journey.bestStreak ?? 0,

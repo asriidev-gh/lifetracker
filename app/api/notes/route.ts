@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Note } from "@/models/Note";
 import { isNoteCategoryKey, type NoteCategoryKey } from "@/lib/noteCategories";
+import { normalizeNoteColorKey } from "@/lib/noteColors";
 
 function contentToPlainText(content: string) {
   return content
@@ -30,6 +31,7 @@ function serializeNote(doc: {
   title: string;
   content: string;
   category?: string;
+  colorKey?: string;
   isPinned?: boolean;
   isArchived?: boolean;
   createdAt: Date;
@@ -43,6 +45,7 @@ function serializeNote(doc: {
     title: doc.title,
     content: doc.content,
     category,
+    colorKey: normalizeNoteColorKey(doc.colorKey),
     isPinned: !!doc.isPinned,
     isArchived: !!doc.isArchived,
     createdAt: doc.createdAt.toISOString(),
@@ -88,6 +91,7 @@ export async function POST(request: Request) {
     const categoryRaw = typeof body?.category === "string" ? body.category : "quick";
     const category: NoteCategoryKey = isNoteCategoryKey(categoryRaw) ? categoryRaw : "quick";
     const isPinned = typeof body?.isPinned === "boolean" ? body.isPinned : false;
+    const colorKey = normalizeNoteColorKey(body?.colorKey);
 
     await connectDB();
     const created = await Note.create({
@@ -95,6 +99,7 @@ export async function POST(request: Request) {
       title: noteTitle,
       content,
       category,
+      colorKey,
       isPinned,
       isArchived: false,
     });

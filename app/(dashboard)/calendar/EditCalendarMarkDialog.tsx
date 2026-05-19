@@ -21,8 +21,11 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { MARK_COLOR_OPTIONS, getMarkChipClass } from "@/lib/calendarMarkColors";
-import type { CalendarMarkRecord } from "@/types/calendarMark";
+import { recurrenceLabel, resolveMarkId } from "@/lib/calendarMarkRecurrence";
+import type { CalendarMarkRecord, CalendarMarkRecurrence } from "@/types/calendarMark";
 import { X } from "lucide-react";
+
+const RECURRENCE_OPTIONS: CalendarMarkRecurrence[] = ["one-time", "weekly", "monthly"];
 
 type EditCalendarMarkDialogProps = {
   open: boolean;
@@ -41,15 +44,18 @@ export function EditCalendarMarkDialog({
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [colorKey, setColorKey] = useState("sky");
+  const [recurrence, setRecurrence] = useState<CalendarMarkRecurrence>("one-time");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (mark && open) {
-      setDate(mark.date.slice(0, 10));
+      const anchor = mark.anchorDate ?? mark.date;
+      setDate(anchor.slice(0, 10));
       setTitle(mark.title);
       setDetails(mark.details ?? "");
       setColorKey(mark.colorKey);
+      setRecurrence(mark.recurrence ?? "one-time");
       setError("");
     }
   }, [mark, open]);
@@ -71,7 +77,8 @@ export function EditCalendarMarkDialog({
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/calendar-marks/${mark._id}`, {
+      const markId = resolveMarkId(mark.sourceId ?? mark._id);
+      const res = await fetch(`/api/calendar-marks/${markId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -79,6 +86,7 @@ export function EditCalendarMarkDialog({
           title: t,
           details: details.trim() || undefined,
           colorKey,
+          recurrence,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -100,11 +108,34 @@ export function EditCalendarMarkDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit marked event</DialogTitle>
-          <DialogDescription>Update the date, name, notes, or highlight color.</DialogDescription>
+          <DialogDescription>
+            Update the schedule, starting date, name, notes, or highlight color. Changes apply to
+            the whole series for repeating events.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-mark-date">Date</Label>
+            <Label>Repeat</Label>
+            <Select
+              value={recurrence}
+              onValueChange={(v) => setRecurrence(v as CalendarMarkRecurrence)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RECURRENCE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {recurrenceLabel(opt)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-mark-date">
+              {recurrence === "one-time" ? "Date" : "Starting date"}
+            </Label>
             <Input
               id="edit-mark-date"
               type="date"

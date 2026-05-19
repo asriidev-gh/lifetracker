@@ -20,7 +20,12 @@ import { ChevronLeft, ChevronRight, Plus, CalendarPlus, Pencil } from "lucide-re
 import { ActivityRecord } from "@/types/activity";
 import type { CalendarMarkRecord } from "@/types/calendarMark";
 import { cn } from "@/lib/utils";
-import { getMarkChipClass } from "@/lib/calendarMarkColors";
+import {
+  getMarkChipClass,
+  getMarkDayBorderClass,
+  getMarkDayStripeClass,
+} from "@/lib/calendarMarkColors";
+import { recurrenceLabel, resolveMarkId } from "@/lib/calendarMarkRecurrence";
 import { MarkRecurringEventsDialog } from "./MarkRecurringEventsDialog";
 import { EditCalendarMarkDialog } from "./EditCalendarMarkDialog";
 
@@ -132,7 +137,8 @@ export function CalendarView() {
     return { chips, overflow };
   }
 
-  async function deleteMark(id: string) {
+  async function deleteMark(mark: CalendarMarkRecord) {
+    const id = resolveMarkId(mark.sourceId ?? mark._id);
     const res = await fetch(`/api/calendar-marks/${id}`, { method: "DELETE" });
     if (res.ok) loadCalendarData();
   }
@@ -199,6 +205,10 @@ export function CalendarView() {
               const key = format(d, "yyyy-MM-dd");
               const dayActivities = activitiesByDate[key] ?? [];
               const dayMarks = marksByDate[key] ?? [];
+              const hasMarks = dayMarks.length > 0;
+              const markBorderClass = hasMarks
+                ? getMarkDayBorderClass(dayMarks[0].colorKey)
+                : undefined;
               const { chips, overflow } = dayChips(key);
               const isCurrentMonth = isSameMonth(d, current);
               const isSelected = selectedDate === key;
@@ -229,11 +239,18 @@ export function CalendarView() {
                     }
                   }}
                   className={cn(
-                    "group relative min-h-[80px] rounded-md border p-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    "group relative min-h-[80px] rounded-md p-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    hasMarks ? "border-2" : "border",
+                    !hasMarks && "border-border",
+                    markBorderClass,
                     !isCurrentMonth && "bg-muted/50 text-muted-foreground",
                     isCurrentMonth && "bg-card",
                     isTodayCell &&
+                      !hasMarks &&
                       "border-primary/70 bg-primary/[0.12] shadow-sm dark:bg-primary/15",
+                    isTodayCell &&
+                      hasMarks &&
+                      "bg-primary/[0.08] shadow-sm dark:bg-primary/10",
                     isSelected && "z-[1] ring-2 ring-primary ring-offset-2 ring-offset-background",
                     !isSelected &&
                       (isTodayCell
@@ -241,6 +258,19 @@ export function CalendarView() {
                         : "hover:bg-muted/50")
                   )}
                 >
+                  {hasMarks ? (
+                    <div
+                      className="pointer-events-none absolute inset-x-0 top-0 flex h-1 overflow-hidden rounded-t-[calc(0.375rem-1px)]"
+                      aria-hidden
+                    >
+                      {dayMarks.map((m) => (
+                        <span
+                          key={m._id}
+                          className={cn("min-w-0 flex-1", getMarkDayStripeClass(m.colorKey))}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="pointer-events-none flex items-start justify-between gap-1">
                     <span
                       className={cn(
@@ -317,6 +347,9 @@ export function CalendarView() {
                     >
                       <div className="min-w-0 space-y-1">
                         <p className="font-medium">{m.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {recurrenceLabel(m.recurrence)}
+                        </p>
                         <span
                           className={cn(
                             "inline-flex rounded px-1.5 py-0.5 text-xs font-medium",
@@ -345,7 +378,7 @@ export function CalendarView() {
                           variant="ghost"
                           size="sm"
                           className="text-destructive hover:text-destructive"
-                          onClick={() => void deleteMark(m._id)}
+                          onClick={() => void deleteMark(m)}
                         >
                           Remove
                         </Button>

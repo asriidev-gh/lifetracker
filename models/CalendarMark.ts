@@ -1,5 +1,7 @@
 import mongoose, { Model, Schema, Types } from "mongoose";
 import { CALENDAR_MARK_COLOR_KEYS } from "@/lib/calendarMarkColors";
+import { CALENDAR_MARK_RECURRENCE_VALUES } from "@/lib/calendarMarkRecurrence";
+import type { CalendarMarkRecurrence } from "@/types/calendarMark";
 
 export interface ICalendarMark {
   _id: string;
@@ -8,6 +10,7 @@ export interface ICalendarMark {
   title: string;
   details?: string;
   colorKey: string;
+  recurrence: CalendarMarkRecurrence;
   createdAt: Date;
 }
 
@@ -22,6 +25,11 @@ const CalendarMarkSchema = new Schema<ICalendarMark>(
       required: true,
       enum: [...CALENDAR_MARK_COLOR_KEYS],
       default: "sky",
+    },
+    recurrence: {
+      type: String,
+      enum: [...CALENDAR_MARK_RECURRENCE_VALUES],
+      default: "one-time",
     },
   },
   { timestamps: true }

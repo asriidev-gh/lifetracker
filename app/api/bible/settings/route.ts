@@ -57,6 +57,7 @@ export async function PATCH(request: Request) {
         journey.readingHistory = [];
         journey.aiConversations = [];
         journey.chapterSummaries = [];
+        journey.todayReadProgress = undefined;
       }
     }
     if (body.resetProgress === true) {
@@ -78,6 +79,7 @@ export async function PATCH(request: Request) {
       journey.readingHistory = [];
       journey.aiConversations = [];
       journey.chapterSummaries = [];
+      journey.todayReadProgress = undefined;
     }
 
     await journey.save();

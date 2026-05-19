@@ -38,6 +38,11 @@ export interface IVocabularyEntry {
   createdAt: string;
 }
 
+export interface ITodayReadProgress {
+  date: string;
+  readKeys: string[];
+}
+
 export interface IBibleJourney {
   _id: string;
   userId: Types.ObjectId;
@@ -67,6 +72,7 @@ export interface IBibleJourney {
   aiConversations: IAIConversationEntry[];
   chapterSummaries: IChapterSummaryEntry[];
   vocabulary: IVocabularyEntry[];
+  todayReadProgress?: ITodayReadProgress;
 }
 
 const BibleJourneySchema = new Schema<IBibleJourney>(
@@ -132,6 +138,10 @@ const BibleJourneySchema = new Schema<IBibleJourney>(
         createdAt: { type: String, required: true },
       },
     ],
+    todayReadProgress: {
+      date: { type: String },
+      readKeys: [{ type: String }],
+    },
   },
   { timestamps: true }
 );

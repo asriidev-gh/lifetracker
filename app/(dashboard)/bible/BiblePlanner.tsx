@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { findReadingKeyForReference } from "@/lib/bibleReadProgress";
 
 type Reading = { stream: "OT" | "NT" | "Wisdom"; reference: string };
 type ReadingLike = { stream: "OT" | "NT" | "Wisdom" | "History"; reference: string };
@@ -70,6 +71,7 @@ type PlanResponse = {
   daysLeft: number;
   remainingChapters: number;
   readings: Reading[];
+  readItemKeys?: string[];
   history: HistoryEntry[];
   savedScriptures: SavedScripture[];
   qaHistory: QAHistoryItem[];
@@ -84,17 +86,9 @@ const streamStyle: Record<Reading["stream"] | "History", string> = {
   History: "bg-slate-500/20 text-slate-800 dark:text-slate-200",
 };
 const HISTORY_PAGE_SIZE = 5;
-const READ_MARKERS_STORAGE_PREFIX = "lifetrack-bible-read-markers";
 
 function getReadingKey(item: ReadingLike) {
   return `${item.stream}::${item.reference}`;
-}
-
-function getReadMarkersStorageKey(nextPlan: PlanResponse) {
-  const readingFingerprint = nextPlan.readings
-    .map((item) => getReadingKey(item))
-    .join("|");
-  return `${READ_MARKERS_STORAGE_PREFIX}:${nextPlan.today}:${nextPlan.planType}:${readingFingerprint}`;
 }
 
 function getUtcDateKey(value: string | Date) {
@@ -281,6 +275,9 @@ export function BiblePlanner() {
       const data = await res.json();
       if (res.ok) {
         setPlan(data);
+        if (Array.isArray(data.readItemKeys)) {
+          setReadItemKeys(data.readItemKeys);
+        }
         setQaDayFilter((current) => {
           if (current !== "all") return current;
           const latestQaDateKey = getLatestQaDateKey(
@@ -390,37 +387,6 @@ export function BiblePlanner() {
   }, [plan, savedChapterFilter]);
 
   useEffect(() => {
-    if (!plan) return;
-    const storageKey = getReadMarkersStorageKey(plan);
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) {
-      setReadItemKeys([]);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        setReadItemKeys([]);
-        return;
-      }
-      const allowed = new Set(plan.readings.map((item) => getReadingKey(item)));
-      const safeKeys = parsed.filter(
-        (value): value is string => typeof value === "string" && allowed.has(value)
-      );
-      setReadItemKeys(safeKeys);
-    } catch {
-      setReadItemKeys([]);
-    }
-  }, [plan]);
-
-  useEffect(() => {
-    if (!plan) return;
-    const storageKey = getReadMarkersStorageKey(plan);
-    window.localStorage.setItem(storageKey, JSON.stringify(readItemKeys));
-  }, [plan, readItemKeys]);
-
-  useEffect(() => {
     if (!reviewHistoryDate) return;
     const stillExists = plan?.history.some((entry) => entry.date === reviewHistoryDate);
     if (!stillExists) {
@@ -453,6 +419,32 @@ export function BiblePlanner() {
     if (res.ok) {
       await loadPlan();
     }
+  }
+
+  async function syncReadMarker(key: string, read: boolean) {
+    if (!plan || reviewHistoryDate !== null) return;
+    try {
+      const res = await fetch("/api/bible/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, read }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.readItemKeys)) {
+          setReadItemKeys(data.readItemKeys);
+        }
+      }
+    } catch {
+      // Optimistic UI already updated.
+    }
+  }
+
+  function markReferenceReadInList(reference: string) {
+    if (!plan) return;
+    const readKey = findReadingKeyForReference(reference, plan.readings);
+    if (!readKey) return;
+    setReadItemKeys((prev) => (prev.includes(readKey) ? prev : [...prev, readKey]));
   }
 
   async function markComplete() {
@@ -864,9 +856,18 @@ export function BiblePlanner() {
         return;
       }
 
-      await loadPlan();
+      const saved = await saveRes.json();
+      if (typeof saved?.readKey === "string") {
+        setReadItemKeys((prev) =>
+          prev.includes(saved.readKey) ? prev : [...prev, saved.readKey]
+        );
+      } else {
+        markReferenceReadInList(readerReference);
+      }
+
+      await loadPlan(true);
       setShowSavedSummaries(true);
-      await showSuccess("Summary generated");
+      await showSuccess("Summary generated and chapter marked as read");
     } catch {
       await showError("Failed to generate summary");
     } finally {
@@ -1414,9 +1415,13 @@ export function BiblePlanner() {
                   className="h-8 w-8 rounded-full"
                   onClick={() => {
                     const key = getReadingKey(item);
+                    const nextRead = !readItemKeys.includes(key);
                     setReadItemKeys((prev) =>
-                      prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]
+                      nextRead ? [...prev, key] : prev.filter((v) => v !== key)
                     );
+                    if (!isHistoryReviewMode) {
+                      void syncReadMarker(key, nextRead);
+                    }
                   }}
                   aria-label={
                     readItemKeys.includes(getReadingKey(item))

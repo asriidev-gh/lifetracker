@@ -1,5 +1,7 @@
 import mongoose, { Model, Schema, Types } from "mongoose";
 import { NOTE_CATEGORY_KEYS } from "@/lib/noteCategories";
+import { NOTE_COLOR_KEYS } from "@/lib/noteColors";
+import type { NoteColorKey } from "@/lib/noteColors";
 
 export interface INote {
   _id: string;
@@ -7,6 +9,7 @@ export interface INote {
   title: string;
   content: string;
   category: string;
+  colorKey: NoteColorKey;
   isPinned: boolean;
   isArchived: boolean;
   createdAt: Date;
@@ -23,6 +26,11 @@ const NoteSchema = new Schema<INote>(
       required: true,
       enum: [...NOTE_CATEGORY_KEYS],
       default: "quick",
+    },
+    colorKey: {
+      type: String,
+      enum: [...NOTE_COLOR_KEYS],
+      default: "default",
     },
     isPinned: { type: Boolean, default: false },
     isArchived: { type: Boolean, default: false },
